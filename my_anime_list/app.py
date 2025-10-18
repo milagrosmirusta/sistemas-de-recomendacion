@@ -41,23 +41,23 @@ def get_recomendaciones():
 
     return render_template("recomendaciones.html", animes_recomendados=animes_recomendados, username=username, cant_valorados=cant_valorados, cant_vistos=cant_vistos)
 
-@app.get('/recomendaciones/<string:anime>')
-def get_recomendaciones_libro(anime):
+@app.get('/recomendaciones/<int:anime_id>')
+def get_recomendaciones_anime(anime_id):
     username = request.cookies.get('username')
 
-    anime_id = recomendar.recomendar_contexto(username, anime)
+    anime_ids_recomendados = recomendar.recomendar_contexto(username, anime_id)
 
     # pongo animes vistos con rating = 0
-    for anime in anime_id:
-        recomendar.insertar_interacciones(anime, username, 0)
+    for aid in anime_ids_recomendados:
+        recomendar.insertar_interacciones(aid, username, 0)
 
-    animes_recomendados = recomendar.datos_animes(anime_id)
+    animes_recomendados = recomendar.datos_animes(anime_ids_recomendados)
     cant_valorados = len(recomendar.items_valorados(username))
     cant_vistos = len(recomendar.items_vistos(username))
 
-    animes = recomendar.obtener_anime(anime)
+    rec = recomendar.obtener_anime(anime_id)
 
-    return render_template("recomendaciones_animes.html", animes=animes, animes_recomendados=animes_recomendados, username=username, cant_valorados=cant_valorados, cant_vistos=cant_vistos)
+    return render_template("recomendaciones_animes.html", rec=rec, animes_recomendados=animes_recomendados, username=username, cant_valorados=cant_valorados, cant_vistos=cant_vistos)
 
 
 @app.post('/recomendaciones')

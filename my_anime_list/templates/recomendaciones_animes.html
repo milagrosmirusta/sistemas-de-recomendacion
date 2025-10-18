@@ -9,12 +9,12 @@
 	<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
 	<link href="https://cdn.jsdelivr.net/npm/daisyui@5/themes.css" rel="stylesheet" type="text/css" />
 
-	<title>Recomendaciones de {{ animes.title }} para {{ username }}</title>
+	<title>Recomendaciones de {{ rec.title }} para {{ username }}</title>
 </head>
 
 <body class="px-6 py-4">
 	<div class="flex justify-between">
-		<h1 class="mb-4 text-lg font-bold">Recomendaciones para {{ username }} mirando {{ animes.title }}</h1>
+		<h1 class="mb-4 text-lg font-bold">Recomendaciones para {{ username }} mirando {{ rec.title }}</h1>
 		<div>
 			<small>{{ cant_vistos }} vistos, {{ cant_valorados }} valorados - <a href="/reset"
 					class="bg-teal-400 text-white font-semibold text-xs px-2 py-1 mt-2 rounded cursor-pointer">reset</a>
@@ -25,23 +25,23 @@
 	<form method="post" action="/recomendaciones" class="flex flex-col w-full space-y-4">
 		<div class="flex justify-center">
 			<div class="card card-side bg-base-100 shadow-sm border bg-base-100">
-				<img src="{{ animes.img_src }}" class="w-full max-w-64 h-auto" />
+				<img src="{{ rec.img_src }}" class="w-full max-w-64 h-auto" />
 				<div class="card-body">
 					<h2 class="card-title font-semibold link">
-						<a href="/recomendaciones/{{animes.anime_id}}">{{ animes.title }}</a>
+						<a href="/recomendaciones/{{rec.anime_id}}">{{ rec.title }}</a>
 					</h2>
 					<span>
-						{{ animes.title }} - {{ animes.genres }} - {{animes.episodes}} - {{ animes.studios }} - {{ animes.year }}
+						{{ rec.title }} - {{ rec.genres }} - {{rec.episodes}} - {{ rec.studios }} - {{ rec.year }}
 					</span>
-					{% if animes.synopsis %}
-					<span>{{ animes.synopsis }}</span>
+					{% if rec.synopsis %}
+					<span>{{ rec.synopsis }}</span>
 					{% endif %}
 
 					<div class="card-actions justify-end items-center mt-auto">
 
 						<div class="flex">
-							<label for="{{animes.anime_id}}" class="flex-none mr-2">Mi puntuación:</label>
-							<select name="{{animes.anime_id}}" class="px-4 py-1 text-sm border rounded ">
+							<label for="{{rec.anime_id}}" class="flex-none mr-2">Mi puntuación:</label>
+							<select name="{{rec.anime_id}}" class="px-4 py-1 text-sm border rounded ">
 								<option value="0" selected></option>
 								<option value="1">1</option>
 								<option value="2">2</option>
@@ -61,21 +61,21 @@
 		</div>
 
 		<div>
-			<h1 class="text-lg font-bold my-4">Quieren vieron {{ animes.title }} también vieron...</h1>
+			<h1 class="text-lg font-bold my-4">Quieren vieron {{ rec.title }} también vieron...</h1>
 			<div class="flex space-x-4">
-				{% for rec in animes_recomendados %}
+				{% for rec_item in animes_recomendados %}
 				<div class="card card-side bg-base-100 shadow-sm border bg-base-100">
-					<img src="{{ rec.img_src }}" class="w-full max-w-32" />
+					<img src="{{ rec_item.img_src }}" class="w-full max-w-32" />
 
 					<div class="card-body">
 						<h2 class="card-title font-semibold link">
-							<a href="/recomendaciones/{{rec.anime_id}}">{{ rec.title }}</a>
+							<a href="/recomendaciones/{{rec_item.anime_id}}">{{ rec_item.title }}</a>
 						</h2>
 						<span class="text-sm">
-							{{ rec.title }} - {{ rec.genres }} - {{rec.episodes}} - {{ rec.studios }} - {{ rec.year }}
+							{{ rec_item.title }} - {{ rec_item.genres }} - {{rec_item.episodes}} - {{ rec_item.studios }} - {{ rec_item.year }}
 						</span>
-						{% if rec.synopsis %}
-						<span class="text-xs">{{ rec.synopsis|truncate(400) }}</span>
+						{% if rec_item.synopsis %}
+						<span class="text-xs">{{ rec_item.synopsis|truncate(400) }}</span>
 						{% endif %}
 
 						<div class="card-actions justify-end items-center mt-auto">
@@ -109,5 +109,5 @@
 				value="Actualizar opiniones">
 		</div>
 	</form>
-
+</body>
 </html>
