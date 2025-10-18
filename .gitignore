@@ -1,2 +1,3 @@
+__pycache__/
 que_libro_leo/embeddings/qll_limpio_encoded.csv
 que_libro_leo/surprise.ipynb
