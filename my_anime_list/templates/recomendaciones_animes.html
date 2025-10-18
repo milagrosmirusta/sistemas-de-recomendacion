@@ -1,113 +1,101 @@
 <!DOCTYPE html>
-<html>
+<html lang="es" data-theme="pastel">
 
 <head>
-	<meta charset="UTF-8" />
-	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-	<script src="https://cdn.tailwindcss.com"></script>
-	<link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" type="text/css" />
-	<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-	<link href="https://cdn.jsdelivr.net/npm/daisyui@5/themes.css" rel="stylesheet" type="text/css" />
-
-	<title>Recomendaciones de {{ rec.title }} para {{ username }}</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@latest/dist/full.css" rel="stylesheet" type="text/css" />
+  <title>Recomendaciones de {{ rec.title }} para {{ username }}</title>
 </head>
 
-<body class="px-6 py-4">
-	<div class="flex justify-between">
-		<h1 class="mb-4 text-lg font-bold">Recomendaciones para {{ username }} mirando {{ rec.title }}</h1>
-		<div>
-			<small>{{ cant_vistos }} vistos, {{ cant_valorados }} valorados - <a href="/reset"
-					class="bg-teal-400 text-white font-semibold text-xs px-2 py-1 mt-2 rounded cursor-pointer">reset</a>
-			</small>
-		</div>
-	</div>
+<body class="bg-gray-50 text-gray-800 px-6 py-6">
+  <div class="max-w-7xl mx-auto">
+    
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-6">
+      <h1 class="text-2xl font-bold">
+        Recomendaciones para <span class="text-teal-600">{{ username }}</span> mirando 
+        <span class="italic">{{ rec.title }}</span>
+      </h1>
+      <small class="text-gray-600">
+        {{ cant_vistos }} vistos, {{ cant_valorados }} valorados  
+        <a href="/reset" class="ml-1 bg-teal-500 text-white font-semibold text-xs px-2 py-1 rounded hover:bg-teal-600">reset</a>
+      </small>
+    </div>
 
-	<form method="post" action="/recomendaciones" class="flex flex-col w-full space-y-4">
-		<div class="flex justify-center">
-			<div class="card card-side bg-base-100 shadow-sm border bg-base-100">
-				<img src="{{ rec.img_src }}" class="w-full max-w-64 h-auto" />
-				<div class="card-body">
-					<h2 class="card-title font-semibold link">
-						<a href="/recomendaciones/{{rec.anime_id}}">{{ rec.title }}</a>
-					</h2>
-					<span>
-						{{ rec.title }} - {{ rec.genres }} - {{rec.episodes}} - {{ rec.studios }} - {{ rec.year }}
-					</span>
-					{% if rec.synopsis %}
-					<span>{{ rec.synopsis }}</span>
-					{% endif %}
+    <!-- Anime principal -->
+    <form method="post" action="/recomendaciones" class="flex flex-col gap-8">
+      <div class="flex flex-col md:flex-row items-start bg-white border rounded-xl shadow-sm p-4 gap-6">
+        <img src="{{ rec.img_src }}" alt="{{ rec.title }}" class="w-full md:w-64 rounded-lg shadow-md" />
 
-					<div class="card-actions justify-end items-center mt-auto">
+        <div class="flex flex-col justify-between flex-1">
+          <div>
+            <h2 class="text-xl font-semibold mb-2">
+              <a href="/recomendaciones/{{ rec.anime_id }}" class="text-teal-700 hover:underline">{{ rec.title }}</a>
+            </h2>
+            <p class="text-sm text-gray-700 mb-2">
+              {{ rec.genres }} · {{ rec.episodes }} eps · {{ rec.studios }} · {{ rec.year }}
+            </p>
+            {% if rec.synopsis %}
+              <p class="text-sm text-gray-600 leading-snug">{{ rec.synopsis }}</p>
+            {% endif %}
+          </div>
 
-						<div class="flex">
-							<label for="{{rec.anime_id}}" class="flex-none mr-2">Mi puntuación:</label>
-							<select name="{{rec.anime_id}}" class="px-4 py-1 text-sm border rounded ">
-								<option value="0" selected></option>
-								<option value="1">1</option>
-								<option value="2">2</option>
-								<option value="3">3</option>
-								<option value="4">4</option>
-								<option value="5">5</option>
-								<option value="6">6</option>
-								<option value="7">7</option>
-								<option value="8">8</option>
-								<option value="9">9</option>
-								<option value="10">10</option>
-							</select>
-						</div>
-					</div>
-				</div>
-			</div>
-		</div>
+          <div class="mt-4 flex items-center gap-2">
+            <label for="{{ rec.anime_id }}" class="text-sm font-medium text-gray-700">Mi puntuación:</label>
+            <select name="{{ rec.anime_id }}" class="select select-bordered select-sm w-24">
+              <option value="0" selected></option>
+              {% for i in range(1, 11) %}
+              <option value="{{ i }}">{{ i }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+      </div>
 
-		<div>
-			<h1 class="text-lg font-bold my-4">Quieren vieron {{ rec.title }} también vieron...</h1>
-			<div class="flex space-x-4">
-				{% for rec_item in animes_recomendados %}
-				<div class="card card-side bg-base-100 shadow-sm border bg-base-100">
-					<img src="{{ rec_item.img_src }}" class="w-full max-w-32" />
+      <!-- Recomendaciones -->
+      <div>
+        <h2 class="text-lg font-bold my-4">Quienes vieron <span class="italic">{{ rec.title }}</span> también vieron...</h2>
 
-					<div class="card-body">
-						<h2 class="card-title font-semibold link">
-							<a href="/recomendaciones/{{rec_item.anime_id}}">{{ rec_item.title }}</a>
-						</h2>
-						<span class="text-sm">
-							{{ rec_item.title }} - {{ rec_item.genres }} - {{rec_item.episodes}} - {{ rec_item.studios }} - {{ rec_item.year }}
-						</span>
-						{% if rec_item.synopsis %}
-						<span class="text-xs">{{ rec_item.synopsis|truncate(400) }}</span>
-						{% endif %}
+        <!-- Grid responsive -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {% for rec_item in animes_recomendados %}
+          <div class="card bg-white border rounded-xl shadow-sm hover:shadow-md transition-shadow">
+            <figure class="h-56 overflow-hidden">
+              <img src="{{ rec_item.img_src }}" alt="{{ rec_item.title }}" class="object-cover w-full h-full" />
+            </figure>
+            <div class="card-body">
+              <h3 class="card-title text-base font-semibold text-teal-700 hover:underline">
+                <a href="/recomendaciones/{{ rec_item.anime_id }}">{{ rec_item.title }}</a>
+              </h3>
+              <p class="text-xs text-gray-700">
+                {{ rec_item.genres }} · {{ rec_item.episodes }} eps · {{ rec_item.studios }} · {{ rec_item.year }}
+              </p>
+              {% if rec_item.synopsis %}
+              <p class="text-xs text-gray-600 mt-2">{{ rec_item.synopsis|truncate(220) }}</p>
+              {% endif %}
+              <div class="card-actions justify-end mt-3">
+                <label for="{{ rec_item.anime_id }}" class="text-xs text-gray-700">Mi puntuación:</label>
+                <select name="{{ rec_item.anime_id }}" class="select select-bordered select-xs w-20">
+                  <option value="0" selected></option>
+                  {% for i in range(1, 11) %}
+                  <option value="{{ i }}">{{ i }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
 
-						<div class="card-actions justify-end items-center mt-auto">
-
-							<div class="flex">
-								<label for="{{rec.anime_id}}" class="flex-none mr-2">Mi puntuación:</label>
-								<select name="{{rec.anime_id}}" class="px-4 py-1 text-sm border rounded ">
-									<option value="0" selected></option>
-									<option value="1">1</option>
-									<option value="2">2</option>
-									<option value="3">3</option>
-									<option value="4">4</option>
-									<option value="5">5</option>
-									<option value="6">6</option>
-									<option value="7">7</option>
-									<option value="8">8</option>
-									<option value="9">9</option>
-									<option value="10">10</option>
-								</select>
-							</div>
-
-						</div>
-					</div>
-				</div>
-				{% endfor %}
-			</div>
-		</div>
-
-		<div class="flex justify-end">
-			<input type="submit" class="bg-teal-400 text-white font-semibold px-4 py-1 mt-2 rounded cursor-pointer"
-				value="Actualizar opiniones">
-		</div>
-	</form>
+      <!-- Botón -->
+      <div class="flex justify-end mt-6">
+        <input type="submit" value="Actualizar opiniones" 
+               class="btn btn-sm bg-teal-500 hover:bg-teal-600 text-white font-semibold px-6 py-2 rounded cursor-pointer">
+      </div>
+    </form>
+  </div>
 </body>
 </html>
