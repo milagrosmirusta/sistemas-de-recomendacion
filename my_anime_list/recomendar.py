@@ -173,6 +173,31 @@ def recomendar_contexto(username, anime_id, animes_relevantes=None, animes_desco
 
     return filtrados
 
+def buscar_ids_por_genero(genero, limit=9):
+    """Devuelve los IDs de animes que contengan el género dado."""
+    pattern = f"%{genero}%"
+    query = f"""
+        SELECT anime_id 
+        FROM animes
+        WHERE genres LIKE ?
+        ORDER BY score DESC, members DESC
+        LIMIT ?
+    """
+    res = sql_select(query, [pattern, limit])
+    return [r["anime_id"] for r in res]
+
+def obtener_generos_unicos():
+    """Devuelve una lista con todos los géneros únicos de la tabla animes."""
+    res = sql_select("SELECT genres FROM animes;")
+    generos = set()
+
+    for r in res:
+        if r["genres"]:
+            for g in r["genres"].split(","):
+                generos.add(g.strip())
+
+    return sorted(list(generos))
+
 ###
 
 def test(username):

@@ -33,10 +33,18 @@ def post_index():
 @app.get('/recomendaciones')
 def get_recomendaciones():
     username = request.cookies.get('username')
+    genero = request.args.get('genero', '').strip()
 
-    anime_id = recomendar.recomendar(username)
+    generos = recomendar.obtener_generos_unicos()
 
-    # pongo animes vistos con rating = 0
+    if genero:
+        # Si hay filtro, buscar animes del género
+        anime_id = recomendar.buscar_ids_por_genero(genero, limit=9)
+    else:
+        # Sino, usar el recomendador normal
+        anime_id = recomendar.recomendar(username)
+
+    # Registrar interacciones con score=0 si son nuevos
     for anime in anime_id:
         recomendar.insertar_interacciones(anime, username, 0)
 
@@ -44,7 +52,15 @@ def get_recomendaciones():
     cant_valorados = len(recomendar.items_valorados(username))
     cant_vistos = len(recomendar.items_vistos(username))
 
-    return render_template("recomendaciones.html", animes_recomendados=animes_recomendados, username=username, cant_valorados=cant_valorados, cant_vistos=cant_vistos)
+    return render_template(
+        "recomendaciones.html",
+        animes_recomendados=animes_recomendados,
+        username=username,
+        cant_valorados=cant_valorados,
+        cant_vistos=cant_vistos,
+        generos=generos,
+        genero_seleccionado=genero
+    )
 
 @app.get('/recomendaciones/<int:anime_id>')
 def get_recomendaciones_anime(anime_id):
