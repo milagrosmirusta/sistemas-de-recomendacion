@@ -2,4 +2,4 @@ __pycache__/
 que_libro_leo/embeddings/qll_limpio_encoded.csv
 que_libro_leo/surprise.ipynb
 resultados.txt
-my_anime_listtemplates/recomendaciones v1.html
+my_anime_list/templates/recomendaciones v1.html

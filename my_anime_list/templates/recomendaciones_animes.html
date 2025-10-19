@@ -1,38 +1,55 @@
 <!DOCTYPE html>
-<html lang="es" data-theme="pastel">
-
+<html lang="es" data-theme="cupcake">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://cdn.jsdelivr.net/npm/daisyui@latest/dist/full.css" rel="stylesheet" type="text/css" />
   <title>Recomendaciones de {{ rec.title }} para {{ username }}</title>
+
+  <style>
+    body {
+      background: linear-gradient(135deg, #f5e8ff, #f7e6ff, #fce7f3);
+      background-attachment: fixed;
+    }
+    .card {
+      animation: fadeInUp 0.4s ease-in-out;
+    }
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
 </head>
 
-<body class="bg-gray-50 text-gray-800 px-6 py-6">
+<body class="min-h-screen text-gray-800 px-8 py-10 font-sans">
   <div class="max-w-7xl mx-auto">
-    
-    <!-- Header -->
-    <div class="flex justify-between items-center mb-6">
-      <h1 class="text-2xl font-bold">
-        Recomendaciones para <span class="text-teal-600">{{ username }}</span> mirando 
-        <span class="italic">{{ rec.title }}</span>
-      </h1>
-      <small class="text-gray-600">
-        {{ cant_vistos }} vistos, {{ cant_valorados }} valorados  
-        <a href="/reset" class="ml-1 bg-teal-500 text-white font-semibold text-xs px-2 py-1 rounded hover:bg-teal-600">reset</a>
-      </small>
-    </div>
 
-    <!-- Anime principal -->
-    <form method="post" action="/recomendaciones" class="flex flex-col gap-8">
-      <div class="flex flex-col md:flex-row items-start bg-white border rounded-xl shadow-sm p-4 gap-6">
-        <img src="{{ rec.img_src }}" alt="{{ rec.title }}" class="w-full md:w-64 rounded-lg shadow-md" />
+    <!-- 🧭 Header -->
+    <header class="flex justify-between items-center mb-8 bg-white/70 backdrop-blur-md border border-purple-100 shadow-sm rounded-2xl px-6 py-4">
+      <div>
+        <h1 class="text-3xl font-bold text-fuchsia-700">
+          💫 Recomendaciones para <span class="text-fuchsia-500">{{ username }}</span> mirando <span class="italic">{{ rec.title }}</span>
+        </h1>
+      </div>
+
+      <small class="text-gray-600">
+        {{ cant_vistos }} vistos · {{ cant_valorados }} valorados
+        <a href="/reset" class="ml-2 bg-fuchsia-400 hover:bg-fuchsia-500 text-white font-semibold text-xs px-3 py-1 rounded-full transition">
+          Reset
+        </a>
+      </small>
+    </header>
+
+    <!-- 🎬 Anime principal -->
+    <form method="post" action="/recomendaciones" class="flex flex-col gap-10">
+      <div class="flex flex-col md:flex-row items-start bg-white/80 backdrop-blur-xl border border-purple-100 rounded-2xl shadow-md p-6 gap-6 hover:shadow-lg transition-all">
+        <img src="{{ rec.img_src }}" alt="{{ rec.title }}" class="w-full md:w-64 rounded-xl shadow-md" />
 
         <div class="flex flex-col justify-between flex-1">
           <div>
-            <h2 class="text-xl font-semibold mb-2">
-              <a href="/recomendaciones/{{ rec.anime_id }}" class="text-teal-700 hover:underline">{{ rec.title }}</a>
+            <h2 class="text-2xl font-semibold text-fuchsia-700 mb-2">
+              <a href="/recomendaciones/{{ rec.anime_id }}" class="hover:underline">{{ rec.title }}</a>
             </h2>
             <p class="text-sm text-gray-700 mb-2">
               {{ rec.genres }} · {{ rec.episodes }} eps · {{ rec.studios }} · {{ rec.year }}
@@ -44,7 +61,7 @@
 
           <div class="mt-4 flex items-center gap-2">
             <label for="{{ rec.anime_id }}" class="text-sm font-medium text-gray-700">Mi puntuación:</label>
-            <select name="{{ rec.anime_id }}" class="select select-bordered select-sm w-24">
+            <select name="{{ rec.anime_id }}" class="select select-bordered select-sm border-fuchsia-300 focus:border-fuchsia-500 w-28">
               <option value="0" selected></option>
               {% for i in range(1, 11) %}
               <option value="{{ i }}">{{ i }}</option>
@@ -54,50 +71,50 @@
         </div>
       </div>
 
-      <!-- Recomendaciones -->
+      <!-- 💜 Recomendaciones -->
       <div>
-        <h2 class="text-lg font-bold my-4">Quienes vieron <span class="italic">{{ rec.title }}</span> también vieron...</h2>
+        <h2 class="text-lg font-bold text-fuchsia-700 mb-6">Quienes vieron <span class="italic">{{ rec.title }}</span> también vieron...</h2>
 
-        <!-- Grid responsive -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
           {% for rec_item in animes_recomendados %}
             {% if rec_item.anime_id != rec.anime_id %}
-          <div class="card bg-white border rounded-xl shadow-sm hover:shadow-md transition-shadow">
-            <figure class="h-56 overflow-hidden">
-              <img src="{{ rec_item.img_src }}" alt="{{ rec_item.title }}" class="object-cover w-full h-full" />
-            </figure>
-            <div class="card-body">
-              <h3 class="card-title text-base font-semibold text-teal-700 hover:underline">
-                <a href="/recomendaciones/{{ rec_item.anime_id }}">{{ rec_item.title }}</a>
-              </h3>
-              <p class="text-xs text-gray-700">
-                {{ rec_item.genres }} · {{ rec_item.episodes }} eps · {{ rec_item.studios }} · {{ rec_item.year }}
-              </p>
-              {% if rec_item.synopsis %}
-              <p class="text-xs text-gray-600 mt-2">{{ rec_item.synopsis|truncate(220) }}</p>
-              {% endif %}
-              <div class="card-actions justify-end mt-3">
-                <label for="{{ rec_item.anime_id }}" class="text-xs text-gray-700">Mi puntuación:</label>
-                <select name="{{ rec_item.anime_id }}" class="select select-bordered select-xs w-20">
-                  <option value="0" selected></option>
-                  {% for i in range(1, 11) %}
-                  <option value="{{ i }}">{{ i }}</option>
-                  {% endfor %}
-                </select>
+            <div class="card bg-white/80 backdrop-blur-xl border border-purple-100 rounded-2xl shadow-md hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
+              <figure class="h-56 overflow-hidden rounded-t-2xl">
+                <img src="{{ rec_item.img_src }}" alt="{{ rec_item.title }}" class="object-cover w-full h-full" />
+              </figure>
+              <div class="card-body p-5">
+                <h3 class="card-title text-base font-semibold text-fuchsia-700 hover:underline">
+                  <a href="/recomendaciones/{{ rec_item.anime_id }}">{{ rec_item.title }}</a>
+                </h3>
+                <p class="text-xs text-gray-700">
+                  {{ rec_item.genres }} · {{ rec_item.episodes }} eps · {{ rec_item.studios }} · {{ rec_item.year }}
+                </p>
+                {% if rec_item.synopsis %}
+                  <p class="text-xs text-gray-500 mt-2 leading-snug">{{ rec_item.synopsis|truncate(220) }}</p>
+                {% endif %}
+                <div class="card-actions justify-end mt-3">
+                  <label for="{{ rec_item.anime_id }}" class="text-xs text-gray-700">Mi puntuación:</label>
+                  <select name="{{ rec_item.anime_id }}" class="select select-bordered select-xs border-fuchsia-300">
+                    <option value="0" selected></option>
+                    {% for i in range(1, 11) %}
+                    <option value="{{ i }}">{{ i }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
               </div>
             </div>
-          </div>
             {% endif %}
           {% endfor %}
         </div>
       </div>
 
-      <!-- Botón -->
-      <div class="flex justify-end mt-6">
-        <input type="submit" value="Actualizar opiniones" 
-               class="btn btn-sm bg-teal-500 hover:bg-teal-600 text-white font-semibold px-6 py-2 rounded cursor-pointer">
+      <!-- 🌸 Botón -->
+      <div class="flex justify-end mt-10">
+        <input type="submit" value="Actualizar opiniones"
+               class="btn btn-sm bg-gradient-to-r from-pink-400 to-fuchsia-400 text-white border-none hover:from-pink-500 hover:to-fuchsia-500 transition px-6">
       </div>
     </form>
+
   </div>
 </body>
 </html>
