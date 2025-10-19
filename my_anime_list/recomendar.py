@@ -82,6 +82,30 @@ def datos_animes(anime_id):
     animes = sql_select(query, anime_id)
     return animes
 
+def filtrar_por_genero(anime_principal_id, lista_ids):
+    """Filtra los animes que compartan al menos un género con el anime principal."""
+    # Obtener géneros del anime principal
+    anime_principal = sql_select("SELECT genres FROM animes WHERE anime_id = ?;", [anime_principal_id])
+    if not anime_principal:
+        return lista_ids  # si no hay géneros, no filtro
+    generos_principal = [g.strip() for g in anime_principal[0]["genres"].split(",")]
+
+    if not lista_ids:
+        return []
+
+    # Busco todos los candidatos y filtro por género
+    placeholders = ",".join(["?"] * len(lista_ids))
+    candidatos = sql_select(f"SELECT anime_id, genres FROM animes WHERE anime_id IN ({placeholders})", lista_ids)
+
+    filtrados = []
+    for a in candidatos:
+        generos = [g.strip() for g in a["genres"].split(",")]
+        if any(g in generos for g in generos_principal) and a["anime_id"] != anime_principal_id:
+            filtrados.append(a["anime_id"])
+
+    # Si hay pocos, los devuelvo todos, si no, muestro los primeros 3 al azar
+    return random.sample(filtrados, k=min(3, len(filtrados)))
+
 ###
 def init():
     print("init: top_animes")
@@ -130,12 +154,24 @@ def recomendar_contexto(username, anime_id, animes_relevantes=None, animes_desco
     if not animes_desconocidos:
         animes_desconocidos = items_desconocidos(username)
 
+    # Primero obtenemos las recomendaciones base (según el modo activo)
     if RECOMENDADOR_ACTIVO == "azar":
-        return recomendar_azar(username, animes_relevantes, animes_desconocidos, N)
+        base_recs = recomendar_azar(username, animes_relevantes, animes_desconocidos, N * 3)
     elif RECOMENDADOR_ACTIVO == "top_n":
-        return recomendador_top_n(username, animes_relevantes, animes_desconocidos, N)
+        base_recs = recomendador_top_n(username, animes_relevantes, animes_desconocidos, N * 3)
     else:
-        raise ValueError(f"Recomendador '{RECOMENDADOR_ACTIVO}' no reconocido")        
+        raise ValueError(f"Recomendador '{RECOMENDADOR_ACTIVO}' no reconocido")
+
+    # Luego filtramos por género del anime principal
+    filtrados = filtrar_por_genero(anime_id, base_recs)
+
+    # Si el filtro deja pocos resultados, completamos con el resto
+    if len(filtrados) < N:
+        faltan = [x for x in base_recs if x not in filtrados and x != anime_id]
+        random.shuffle(faltan)
+        filtrados += faltan[: N - len(filtrados)]
+
+    return filtrados
 
 ###
 

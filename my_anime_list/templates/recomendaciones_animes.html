@@ -61,6 +61,7 @@
         <!-- Grid responsive -->
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {% for rec_item in animes_recomendados %}
+            {% if rec_item.anime_id != rec.anime_id %}
           <div class="card bg-white border rounded-xl shadow-sm hover:shadow-md transition-shadow">
             <figure class="h-56 overflow-hidden">
               <img src="{{ rec_item.img_src }}" alt="{{ rec_item.title }}" class="object-cover w-full h-full" />
@@ -86,6 +87,7 @@
               </div>
             </div>
           </div>
+            {% endif %}
           {% endfor %}
         </div>
       </div>
