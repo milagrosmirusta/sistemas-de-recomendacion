@@ -1,5 +1,6 @@
 ## version: 1.0 -- recomendaciones al azar
 
+from mimetypes import init
 import sqlite3
 import os
 import random
@@ -8,6 +9,9 @@ import metricas
 
 #DATABASE_FILE = os.path.dirname(os.path.abspath("__file__")) + "/datos/qll.db"
 DATABASE_FILE = os.path.dirname(__file__) + "/datos/mal.db"
+
+### --- RECOMENDADOR USADO --- ###
+RECOMENDADOR_ACTIVO = "top_n"  # opciones: "azar", "top_n", "item_based", "user_based"
 
 ###
 
@@ -84,6 +88,23 @@ def recomendar_azar(username, animes_relevantes, animes_desconocidos, N=9):
     anime_id = random.sample(animes_desconocidos, N)
     return anime_id
 
+def recomendador_top_n(id_lector, animes_relevantes, animes_desconocidos, N=10):
+
+    #res = sql_select(f"SELECT anime_id FROM animes WHERE anime_id NOT IN ({",".join("?"*len(animes_relevantes))}) ORDER BY score DESC LIMIT ?;", animes_relevantes + [N])
+    res = sql_select("""
+    SELECT anime_id, title
+    FROM animes
+    WHERE anime_id IN (
+        SELECT anime_id
+        FROM animes
+        WHERE members > ?
+        ORDER BY score DESC, members DESC
+        LIMIT ?
+    );""", [10000, N])
+    id_animes = [i["anime_id"] for i in res]
+
+    return id_animes
+
 def recomendar(username, animes_relevantes=None, animes_desconocidos=None, N=9):
     if not animes_relevantes:
         animes_relevantes = items_valorados(username)
@@ -91,7 +112,12 @@ def recomendar(username, animes_relevantes=None, animes_desconocidos=None, N=9):
     if not animes_desconocidos:
         animes_desconocidos = items_desconocidos(username)
 
-    return recomendar_azar(username, animes_relevantes, animes_desconocidos, N)
+    if RECOMENDADOR_ACTIVO == "azar":
+        return recomendar_azar(username, animes_relevantes, animes_desconocidos, N)
+    elif RECOMENDADOR_ACTIVO == "top_n":
+        return recomendador_top_n(username, animes_relevantes, animes_desconocidos, N)
+    else:
+        raise ValueError(f"Recomendador '{RECOMENDADOR_ACTIVO}' no reconocido")
 
 def recomendar_contexto(username, anime_id, animes_relevantes=None, animes_desconocidos=None, N=3):
     if not animes_relevantes:
@@ -100,7 +126,12 @@ def recomendar_contexto(username, anime_id, animes_relevantes=None, animes_desco
     if not animes_desconocidos:
         animes_desconocidos = items_desconocidos(username)
 
-    return recomendar_azar(username, animes_relevantes, animes_desconocidos, N)
+    if RECOMENDADOR_ACTIVO == "azar":
+        return recomendar_azar(username, animes_relevantes, animes_desconocidos, N)
+    elif RECOMENDADOR_ACTIVO == "top_n":
+        return recomendador_top_n(username, animes_relevantes, animes_desconocidos, N)
+    else:
+        raise ValueError(f"Recomendador '{RECOMENDADOR_ACTIVO}' no reconocido")        
 
 ###
 
@@ -130,7 +161,12 @@ def test(username):
     return score
 
 if __name__ == '__main__':
-    user_animes = sql_select("SELECT username FROM usuarios WHERE (SELECT count(*) FROM interacciones WHERE username = usuarios.username) >= 100 limit 50;")
+    user_animes = sql_select("""
+        SELECT username 
+        FROM usuarios 
+        WHERE (SELECT count(*) FROM interacciones WHERE username = usuarios.username) >= 100 
+        LIMIT 50;
+    """)
     user_animes = [i["username"] for i in user_animes]
 
     scores = []
@@ -139,6 +175,15 @@ if __name__ == '__main__':
         scores.append(score)
         print(f"{user} >> {score:.6f}")
 
-    print(f"NDCG: {sum(scores)/len(scores):.6f}")
+    ndcg_mean = sum(scores)/len(scores)
+    print(f"\nNDCG: {ndcg_mean:.6f} --> {RECOMENDADOR_ACTIVO}")
+
+    # 💾 Guardar resultado
+    from datetime import datetime
+    with open("resultados.txt", "a", encoding="utf-8") as f:
+        f.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {RECOMENDADOR_ACTIVO} - NDCG: {ndcg_mean:.6f}\n")
+
+    print("✅ Resultados guardados en resultados.txt")
 
 
+   
