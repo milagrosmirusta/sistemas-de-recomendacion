@@ -83,26 +83,30 @@ def datos_animes(anime_id):
     return animes
 
 ###
+def init():
+    print("init: top_animes")
+    sql_execute("DROP TABLE IF EXISTS top_animes;")
+    sql_execute("""
+        CREATE TABLE top_animes AS
+        SELECT anime_id, members, score
+        FROM animes
+        ORDER BY score DESC, members DESC
+    """)
 
 def recomendar_azar(username, animes_relevantes, animes_desconocidos, N=9):
     anime_id = random.sample(animes_desconocidos, N)
     return anime_id
 
-def recomendador_top_n(id_lector, animes_relevantes, animes_desconocidos, N=10):
+def recomendador_top_n(username, animes_relevantes, animes_desconocidos, N=9):
+    res = sql_select(f"""
+        SELECT anime_id 
+        FROM top_animes 
+        WHERE anime_id NOT IN ({",".join("?"*len(animes_relevantes))})
+        ORDER BY score DESC 
+        LIMIT ?;
+    """, animes_relevantes + [N])
 
-    #res = sql_select(f"SELECT anime_id FROM animes WHERE anime_id NOT IN ({",".join("?"*len(animes_relevantes))}) ORDER BY score DESC LIMIT ?;", animes_relevantes + [N])
-    res = sql_select("""
-    SELECT anime_id, title
-    FROM animes
-    WHERE anime_id IN (
-        SELECT anime_id
-        FROM animes
-        WHERE members > ?
-        ORDER BY score DESC, members DESC
-        LIMIT ?
-    );""", [10000, N])
     id_animes = [i["anime_id"] for i in res]
-
     return id_animes
 
 def recomendar(username, animes_relevantes=None, animes_desconocidos=None, N=9):

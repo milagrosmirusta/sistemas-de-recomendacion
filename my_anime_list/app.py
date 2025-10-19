@@ -4,6 +4,11 @@ import recomendar
 app = Flask(__name__)
 app.debug = True
 
+try:
+    recomendar.init()
+except Exception as e:
+    print(f"⚠️ init() falló: {e}")
+    
 @app.get('/')
 def get_index():
     return render_template('login.html')
