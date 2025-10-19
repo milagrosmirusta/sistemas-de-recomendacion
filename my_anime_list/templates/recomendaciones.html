@@ -8,18 +8,74 @@
   <title>Recomendaciones para {{ username }}</title>
 
   <style>
+    /* 🌸 Modo claro */
     body {
       background: linear-gradient(135deg, #f5e8ff, #f7e6ff, #fce7f3);
       background-attachment: fixed;
+      color: #333;
+      transition: background 0.4s, color 0.4s;
     }
     .card {
+      background: rgba(255, 255, 255, 0.8);
+      border-color: #f3d1ff;
       animation: fadeInUp 0.4s ease-in-out;
+      transition: background 0.4s, color 0.4s, border 0.4s;
     }
     @keyframes fadeInUp {
       from { opacity: 0; transform: translateY(10px); }
       to { opacity: 1; transform: translateY(0); }
     }
+
+    /* 🌙 Modo oscuro */
+    html[data-theme="dark"] body {
+      background: linear-gradient(135deg, #1a102e, #2a1745, #3b1a55);
+      color: #f3e8ff;
+    }
+    html[data-theme="dark"] .card {
+      background: rgba(30, 24, 54, 0.85);
+      border-color: #5b21b6;
+      color: #f3e8ff;
+    }
+    html[data-theme="dark"] h1, 
+    html[data-theme="dark"] h2, 
+    html[data-theme="dark"] h3, 
+    html[data-theme="dark"] p, 
+    html[data-theme="dark"] label {
+      color: #f3e8ff;
+    }
+    html[data-theme="dark"] select {
+      background-color: #2a1745;
+      color: #f3e8ff;
+      border-color: #9333ea;
+    }
+    html[data-theme="dark"] .btn {
+      background: linear-gradient(to right, #ec4899, #a855f7);
+      color: white;
+    }
+    html[data-theme="dark"] .bg-white\/70,
+    html[data-theme="dark"] .bg-white\/60,
+    html[data-theme="dark"] .bg-white\/80 {
+      background: rgba(42, 23, 69, 0.7);
+    }
   </style>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const savedTheme = localStorage.getItem("theme") || "cupcake";
+      document.documentElement.setAttribute("data-theme", savedTheme);
+      document.getElementById("theme-icon").textContent =
+        savedTheme === "cupcake" ? "🌙" : "☀️";
+    });
+
+    function toggleTheme() {
+      const currentTheme = document.documentElement.getAttribute("data-theme");
+      const newTheme = currentTheme === "cupcake" ? "dark" : "cupcake";
+      document.documentElement.setAttribute("data-theme", newTheme);
+      localStorage.setItem("theme", newTheme);
+      document.getElementById("theme-icon").textContent =
+        newTheme === "cupcake" ? "🌙" : "☀️";
+    }
+  </script>
 </head>
 
 <body class="min-h-screen text-gray-800 px-8 py-10 font-sans">
@@ -36,13 +92,18 @@
 
       <div class="flex items-center gap-3 text-sm text-gray-600">
         <span>{{ cant_vistos }} vistos · {{ cant_valorados }} valorados</span>
-        <a href="/reset" class="bg-fuchsia-400 hover:bg-fuchsia-500 text-white font-semibold text-xs px-3 py-1 rounded-full transition">
+        <a href="/reset"
+           class="bg-fuchsia-400 hover:bg-fuchsia-500 text-white font-semibold text-xs px-3 py-1 rounded-full transition">
           Reset
         </a>
+        <!-- 🌞🌙 Toggle -->
+        <button onclick="toggleTheme()" class="ml-2 text-lg hover:scale-110 transition-all" title="Cambiar tema">
+          <span id="theme-icon">🌙</span>
+        </button>
       </div>
     </header>
 
-    <!-- 🔍 Filtro de género -->
+    <!-- 🔍 Filtro -->
     <form method="get" action="/recomendaciones"
           class="flex flex-wrap gap-4 mb-10 items-center bg-white/60 backdrop-blur-md border border-purple-200 rounded-xl p-4 shadow-sm">
       <label for="genero" class="text-sm font-semibold text-gray-700">🎬 Filtrar por género:</label>
@@ -63,29 +124,24 @@
     <form method="post" action="/recomendaciones">
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
         {% for rec in animes_recomendados %}
-        <div class="card bg-white/80 backdrop-blur-xl border border-purple-100 rounded-2xl shadow-md hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
-
+        <div class="card border rounded-2xl shadow-md hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
           <figure class="h-60 overflow-hidden rounded-t-2xl">
             <img src="{{ rec.img_src }}" alt="{{ rec.title }}" class="object-cover w-full h-full" />
           </figure>
-
           <div class="card-body p-5">
             <h2 class="card-title text-lg font-semibold text-fuchsia-700 hover:underline mb-1">
               <a href="/recomendaciones/{{ rec.anime_id }}">{{ rec.title }}</a>
             </h2>
-
-            <p class="text-xs text-gray-600 mb-2">
+            <p class="text-xs mb-2">
               {{ rec.genres }} · {{ rec.episodes }} eps · {{ rec.studios }} · {{ rec.year }}
             </p>
-
             {% if rec.synopsis %}
-              <p class="text-xs text-gray-500 leading-snug mb-3">
+              <p class="text-xs leading-snug mb-3">
                 {{ rec.synopsis|truncate(220) }}
               </p>
             {% endif %}
-
             <div class="flex justify-end items-center mt-auto">
-              <label for="{{ rec.anime_id }}" class="text-xs text-gray-600 mr-2">Mi puntuación:</label>
+              <label for="{{ rec.anime_id }}" class="text-xs mr-2">Mi puntuación:</label>
               <select name="{{ rec.anime_id }}" class="select select-bordered select-xs border-fuchsia-300">
                 <option value="0" selected></option>
                 {% for i in range(1, 11) %}
@@ -104,7 +160,6 @@
                value="Más recomendaciones">
       </div>
     </form>
-
   </div>
 </body>
 </html>

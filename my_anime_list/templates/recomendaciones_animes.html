@@ -8,18 +8,74 @@
   <title>Recomendaciones de {{ rec.title }} para {{ username }}</title>
 
   <style>
+    /* 🌸 Modo claro */
     body {
       background: linear-gradient(135deg, #f5e8ff, #f7e6ff, #fce7f3);
       background-attachment: fixed;
+      color: #333;
+      transition: background 0.4s, color 0.4s;
     }
     .card {
+      background: rgba(255, 255, 255, 0.8);
+      border-color: #f3d1ff;
       animation: fadeInUp 0.4s ease-in-out;
+      transition: background 0.4s, color 0.4s, border 0.4s;
     }
     @keyframes fadeInUp {
       from { opacity: 0; transform: translateY(10px); }
       to { opacity: 1; transform: translateY(0); }
     }
+
+    /* 🌙 Modo oscuro personalizado */
+    html[data-theme="dark"] body {
+      background: linear-gradient(135deg, #1a102e, #2a1745, #3b1a55);
+      color: #f3e8ff;
+    }
+    html[data-theme="dark"] .card {
+      background: rgba(30, 24, 54, 0.85);
+      border-color: #5b21b6;
+      color: #f3e8ff;
+    }
+    html[data-theme="dark"] h1,
+    html[data-theme="dark"] h2,
+    html[data-theme="dark"] h3,
+    html[data-theme="dark"] p,
+    html[data-theme="dark"] label {
+      color: #f3e8ff;
+    }
+    html[data-theme="dark"] select {
+      background-color: #2a1745;
+      color: #f3e8ff;
+      border-color: #9333ea;
+    }
+    html[data-theme="dark"] .btn {
+      background: linear-gradient(to right, #ec4899, #a855f7);
+      color: white;
+    }
+    html[data-theme="dark"] .bg-white\/70,
+    html[data-theme="dark"] .bg-white\/60,
+    html[data-theme="dark"] .bg-white\/80 {
+      background: rgba(42, 23, 69, 0.7);
+    }
   </style>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const savedTheme = localStorage.getItem("theme") || "cupcake";
+      document.documentElement.setAttribute("data-theme", savedTheme);
+      document.getElementById("theme-icon").textContent =
+        savedTheme === "cupcake" ? "🌙" : "☀️";
+    });
+
+    function toggleTheme() {
+      const currentTheme = document.documentElement.getAttribute("data-theme");
+      const newTheme = currentTheme === "cupcake" ? "dark" : "cupcake";
+      document.documentElement.setAttribute("data-theme", newTheme);
+      localStorage.setItem("theme", newTheme);
+      document.getElementById("theme-icon").textContent =
+        newTheme === "cupcake" ? "🌙" : "☀️";
+    }
+  </script>
 </head>
 
 <body class="min-h-screen text-gray-800 px-8 py-10 font-sans">
@@ -33,12 +89,17 @@
         </h1>
       </div>
 
-      <small class="text-gray-600">
-        {{ cant_vistos }} vistos · {{ cant_valorados }} valorados
-        <a href="/reset" class="ml-2 bg-fuchsia-400 hover:bg-fuchsia-500 text-white font-semibold text-xs px-3 py-1 rounded-full transition">
+      <div class="flex items-center gap-3 text-sm text-gray-600">
+        <span>{{ cant_vistos }} vistos · {{ cant_valorados }} valorados</span>
+        <a href="/reset"
+           class="ml-2 bg-fuchsia-400 hover:bg-fuchsia-500 text-white font-semibold text-xs px-3 py-1 rounded-full transition">
           Reset
         </a>
-      </small>
+        <!-- 🌞🌙 Toggle -->
+        <button onclick="toggleTheme()" class="ml-2 text-lg hover:scale-110 transition-all" title="Cambiar tema">
+          <span id="theme-icon">🌙</span>
+        </button>
+      </div>
     </header>
 
     <!-- 🎬 Anime principal -->
@@ -78,7 +139,7 @@
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
           {% for rec_item in animes_recomendados %}
             {% if rec_item.anime_id != rec.anime_id %}
-            <div class="card bg-white/80 backdrop-blur-xl border border-purple-100 rounded-2xl shadow-md hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
+            <div class="card border rounded-2xl shadow-md hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
               <figure class="h-56 overflow-hidden rounded-t-2xl">
                 <img src="{{ rec_item.img_src }}" alt="{{ rec_item.title }}" class="object-cover w-full h-full" />
               </figure>
@@ -114,7 +175,6 @@
                class="btn btn-sm bg-gradient-to-r from-pink-400 to-fuchsia-400 text-white border-none hover:from-pink-500 hover:to-fuchsia-500 transition px-6">
       </div>
     </form>
-
   </div>
 </body>
 </html>
