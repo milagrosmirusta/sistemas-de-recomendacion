@@ -36,25 +36,37 @@ def get_recomendaciones():
     genero = request.args.get('genero', '').strip()
 
     generos = recomendar.obtener_generos_unicos()
-
+    animes_vistos = set(map(int, recomendar.items_vistos(username)))
+    animes_valorados = set(map(int, recomendar.items_valorados(username)))
+    animes_totales = animes_vistos | animes_valorados
     if genero:
-        # Si hay filtro, buscar animes del género
-        anime_id = recomendar.buscar_ids_por_genero(genero, limit=9)
+        anime_id = recomendar.buscar_ids_por_genero(genero, limit=200)
     else:
-        # Sino, usar el recomendador normal
         anime_id = recomendar.recomendar(username)
+    animes_no_vistos = [aid for aid in anime_id if int(aid) not in animes_totales]
 
-    # Registrar interacciones con score=0 si son nuevos
-    for anime in anime_id:
-        recomendar.insertar_interacciones(anime, username, 0)
+    if not animes_no_vistos:
+        print("⚠️ Todos los recomendados vistos. Buscando siguientes del top.")
+        animes_no_vistos = recomendar.top_animes(limit=500)
+        animes_no_vistos = [aid for aid in animes_no_vistos if int(aid) not in animes_totales]
+   
+    print(f"🎯 Total de animes recomendados por modelo: {len(anime_id)}")
+    print(f"👀 Ejemplo de IDs recomendados: {anime_id[:15]}")
+    print(f"🚫 IDs ya vistos/valorados ({len(animes_totales)}): {list(animes_totales)[:15]}")
+    animes_finales_ids = animes_no_vistos[:9]
+    animes_finales = recomendar.datos_animes(animes_finales_ids)
 
-    animes_recomendados = recomendar.datos_animes(anime_id)
+    for aid in animes_finales_ids:
+        if aid not in animes_vistos:
+            recomendar.insertar_interacciones(aid, username, 0)
+
     cant_valorados = len(recomendar.items_valorados(username))
     cant_vistos = len(recomendar.items_vistos(username))
 
+    # --- Render ---
     return render_template(
         "recomendaciones.html",
-        animes_recomendados=animes_recomendados,
+        animes_recomendados=animes_finales,
         username=username,
         cant_valorados=cant_valorados,
         cant_vistos=cant_vistos,
@@ -62,23 +74,36 @@ def get_recomendaciones():
         genero_seleccionado=genero
     )
 
+
 @app.get('/recomendaciones/<int:anime_id>')
 def get_recomendaciones_anime(anime_id):
     username = request.cookies.get('username')
-
+    
+    animes_vistos = set(map(int, recomendar.items_vistos(username)))
+    animes_valorados = set(map(int, recomendar.items_valorados(username)))
+    animes_totales = animes_vistos | animes_valorados
     anime_ids_recomendados = recomendar.recomendar_contexto(username, anime_id)
+    animes_no_vistos = [aid for aid in anime_ids_recomendados if int(aid) not in animes_totales]
 
-    # pongo animes vistos con rating = 0
-    for aid in anime_ids_recomendados:
-        recomendar.insertar_interacciones(aid, username, 0)
+    if not animes_no_vistos:
+        print(f"⚠️ Todos los similares a {anime_id} vistos. Mostrando otros del mismo género.")
+        genero_principal = recomendar.genero_principal(anime_id)  
+        animes_no_vistos = recomendar.buscar_ids_por_genero(genero_principal, limit=20)
+        animes_no_vistos = [aid for aid in animes_no_vistos if int(aid) not in animes_totales]
 
-    animes_recomendados = recomendar.datos_animes(anime_ids_recomendados)
-    cant_valorados = len(recomendar.items_valorados(username))
-    cant_vistos = len(recomendar.items_vistos(username))
+    animes_finales_ids = animes_no_vistos[:3]
+    animes_finales = recomendar.datos_animes(animes_finales_ids)
+
+    for aid in animes_finales_ids:
+        if aid not in animes_vistos:
+            recomendar.insertar_interacciones(aid, username, 0)
 
     rec = recomendar.obtener_anime(anime_id)
 
-    return render_template("recomendaciones_animes.html", rec=rec, animes_recomendados=animes_recomendados, username=username, cant_valorados=cant_valorados, cant_vistos=cant_vistos)
+    cant_valorados = len(recomendar.items_valorados(username))
+    cant_vistos = len(recomendar.items_vistos(username))
+
+    return render_template("recomendaciones_animes.html", rec=rec, animes_recomendados=animes_finales, username=username, cant_valorados=cant_valorados, cant_vistos=cant_vistos)
 
 
 @app.post('/recomendaciones')

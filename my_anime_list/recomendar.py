@@ -72,6 +72,7 @@ def items_vistos(username):
     rows = sql_select(query, [username])
     return [i["anime_id"] for i in rows]
 
+
 def items_desconocidos(username):
     query = f"SELECT anime_id FROM animes WHERE anime_id NOT IN (SELECT anime_id FROM interacciones WHERE username = ? AND score IS NOT NULL)"
     rows = sql_select(query, [username])
@@ -117,6 +118,14 @@ def init():
         ORDER BY score DESC, members DESC
     """)
 
+def top_animes(limit=500):
+    """
+    Devuelve los IDs del top general, ya generado por init().
+    """
+    query = "SELECT anime_id FROM top_animes LIMIT ?"
+    rows = sql_select(query, [limit])
+    return [r["anime_id"] for r in rows]    
+
 def recomendar_azar(username, animes_relevantes, animes_desconocidos, N=9):
     anime_id = random.sample(animes_desconocidos, N)
     return anime_id
@@ -133,7 +142,17 @@ def recomendador_top_n(username, animes_relevantes, animes_desconocidos, N=9):
     id_animes = [i["anime_id"] for i in res]
     return id_animes
 
-def recomendar(username, animes_relevantes=None, animes_desconocidos=None, N=9):
+def genero_principal(anime_id):
+
+    query = "SELECT genres FROM animes WHERE anime_id = ?"
+    row = sql_select(query, [anime_id])
+    if not row:
+        return None
+    generos = row[0]["genres"].split(", ")
+    return generos[0] if generos else None
+
+
+def recomendar(username, animes_relevantes=None, animes_desconocidos=None, N=500):
     if not animes_relevantes:
         animes_relevantes = items_valorados(username)
 
@@ -147,7 +166,7 @@ def recomendar(username, animes_relevantes=None, animes_desconocidos=None, N=9):
     else:
         raise ValueError(f"Recomendador '{RECOMENDADOR_ACTIVO}' no reconocido")
 
-def recomendar_contexto(username, anime_id, animes_relevantes=None, animes_desconocidos=None, N=3):
+def recomendar_contexto(username, anime_id, animes_relevantes=None, animes_desconocidos=None, N=500):
     if not animes_relevantes:
         animes_relevantes = items_valorados(username)
 
