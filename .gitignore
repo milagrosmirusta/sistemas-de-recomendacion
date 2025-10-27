@@ -1,5 +1,4 @@
 __pycache__/
-que_libro_leo/embeddings/qll_limpio_encoded.csv
-que_libro_leo/surprise.ipynb
+que_libro_leo/
 resultados.txt
 my_anime_list/templates/recomendaciones v1.html

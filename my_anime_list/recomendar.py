@@ -4,6 +4,7 @@ from mimetypes import init
 import sqlite3
 import os
 import random
+from flask import g
 
 import metricas
 
@@ -13,32 +14,65 @@ DATABASE_FILE = os.path.dirname(__file__) + "/datos/mal.db"
 ### --- RECOMENDADOR USADO --- ###
 RECOMENDADOR_ACTIVO = "top_n"  # opciones: "azar", "top_n", "item_based", "user_based"
 
-###
+## Conexión global
 
+def get_db():
+    """Crea una conexión única por request (persistente en g)."""
+    if 'db' not in g:
+        g.db = sqlite3.connect(DATABASE_FILE)
+        g.db.row_factory = sqlite3.Row # devuelve diccionarios
+    return g.db
+
+
+def close_db(e=None):
+    """Cierra la conexión si existe al final del request."""
+    db = g.pop('db', None)
+    if db is not None:
+        db.close()
+
+# def sql_execute(query, params=None):
+#     con = sqlite3.connect(DATABASE_FILE)
+#     cur = con.cursor()
+#     if params:
+#         res = cur.execute(query, params)
+#     else:
+#         res = cur.execute(query)
+
+#     con.commit()
+#     con.close()
+#     return res
 def sql_execute(query, params=None):
-    con = sqlite3.connect(DATABASE_FILE)
-    cur = con.cursor()
+    db = get_db()
+    cur = db.cursor()
     if params:
-        res = cur.execute(query, params)
+        cur.execute(query, params)
     else:
-        res = cur.execute(query)
+        cur.execute(query)
+    db.commit()
+    return cur
 
-    con.commit()
-    con.close()
-    return res
 
 def sql_select(query, params=None):
-    con = sqlite3.connect(DATABASE_FILE)
-    con.row_factory = sqlite3.Row # esto es para que devuelva registros en el fetchall
-    cur = con.cursor()
+    db = get_db()
+    cur = db.cursor()
     if params:
-        res = cur.execute(query, params)
+        cur.execute(query, params)
     else:
-        res = cur.execute(query)
+        cur.execute(query)
+    return cur.fetchall()
 
-    ret = res.fetchall()
-    con.close()
-    return ret
+# def sql_select(query, params=None):
+#     con = sqlite3.connect(DATABASE_FILE)
+#     con.row_factory = sqlite3.Row # esto es para que devuelva registros en el fetchall
+#     cur = con.cursor()
+#     if params:
+#         res = cur.execute(query, params)
+#     else:
+#         res = cur.execute(query)
+
+#     ret = res.fetchall()
+#     con.close()
+#     return ret
 
 ###
 
@@ -112,11 +146,16 @@ def init():
     print("init: top_animes")
     sql_execute("DROP TABLE IF EXISTS top_animes;")
     sql_execute("""
-        CREATE TABLE top_animes AS
-        SELECT anime_id, members, score
-        FROM animes
-        ORDER BY score DESC, members DESC
-    """)
+        CREATE TABLE top_animes (
+        anime_id BIGINT PRIMARY KEY,
+        members BIGINT,
+        score FLOAT);""")
+    sql_execute("""INSERT INTO top_animes (anime_id, members, score)
+    SELECT anime_id, members, score
+    FROM animes
+    ORDER BY score DESC, members DESC""")
+
+
 
 def top_animes(limit=500):
     """
