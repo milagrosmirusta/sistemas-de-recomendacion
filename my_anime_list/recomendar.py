@@ -108,9 +108,16 @@ def items_vistos(username):
 
 
 def items_desconocidos(username):
-    query = f"SELECT anime_id FROM animes WHERE anime_id NOT IN (SELECT anime_id FROM interacciones WHERE username = ? AND score IS NOT NULL)"
+    query = """
+        SELECT a.anime_id
+        FROM animes a
+        LEFT JOIN interacciones i 
+          ON a.anime_id = i.anime_id AND i.username = ?
+        WHERE i.anime_id IS NULL;
+    """
     rows = sql_select(query, [username])
     return [i["anime_id"] for i in rows]
+
 
 def datos_animes(anime_id):
     query = f"SELECT DISTINCT * FROM animes WHERE anime_id IN ({','.join(['?']*len(anime_id))})"
