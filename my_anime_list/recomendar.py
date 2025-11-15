@@ -150,7 +150,21 @@ def filtrar_por_genero(anime_principal_id, lista_ids):
 
 ###
 def init():
-    print("init: top_animes")
+    """Crea la tabla top_animes solo si no existe o está vacía."""
+    # Verificar si la tabla existe y tiene datos
+    result = sql_select("""
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name='top_animes';
+    """)
+
+    if result:  # La tabla existe
+        # Verificar si tiene datos
+        count = sql_select("SELECT COUNT(*) as cnt FROM top_animes;")
+        if count[0]["cnt"] > 0:
+            print("✅ init: top_animes ya existe con datos, omitiendo creación")
+            return
+
+    print("🔄 init: creando top_animes")
     sql_execute("DROP TABLE IF EXISTS top_animes;")
     sql_execute("""
         CREATE TABLE top_animes (
@@ -161,6 +175,7 @@ def init():
     SELECT anime_id, members, score
     FROM animes
     ORDER BY score DESC, members DESC""")
+    print("✅ init: top_animes creada exitosamente")
 
 
 
