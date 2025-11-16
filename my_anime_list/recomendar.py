@@ -1,4 +1,4 @@
-## version: 1.0 -- recomendaciones al azar
+## version: 1.4 -- recomendaciones item based
 
 from mimetypes import init
 import sqlite3
@@ -12,16 +12,33 @@ import metricas
 DATABASE_FILE = os.path.dirname(__file__) + "/datos/mal.db"
 
 ### --- RECOMENDADOR USADO --- ###
-RECOMENDADOR_ACTIVO = "top_n"  # opciones: "azar", "top_n", "item_based", "user_based"
+RECOMENDADOR_ACTIVO = "item_based"  # opciones: "azar", "top_n", "item_based", "user_based"
 
 ## Conexión global
+# Flag para saber si estamos en Flask o testing directo
+_testing_db = None  # Conexión para testing
 
+## Conexión global
 def get_db():
-    """Crea una conexión única por request (persistente en g)."""
-    if 'db' not in g:
-        g.db = sqlite3.connect(DATABASE_FILE)
-        g.db.row_factory = sqlite3.Row # devuelve diccionarios
-    return g.db
+    """
+    Crea una conexión única por request (persistente en g) cuando está en Flask.
+    Si está en testing directo, usa una conexión global.
+    """
+    # Si estamos en testing directo (sin Flask)
+    if _testing_db is not None:
+        return _testing_db
+    
+    # Si estamos en Flask
+    try:
+        if 'db' not in g:
+            g.db = sqlite3.connect(DATABASE_FILE)
+            g.db.row_factory = sqlite3.Row
+        return g.db
+    except RuntimeError:
+        # Si g no existe, crear conexión temporal
+        db = sqlite3.connect(DATABASE_FILE)
+        db.row_factory = sqlite3.Row
+        return db
 
 
 def close_db(e=None):
@@ -30,6 +47,21 @@ def close_db(e=None):
     if db is not None:
         db.close()
 
+
+def init_testing_db():
+    """Inicializa la base de datos para testing (sin Flask)."""
+    global _testing_db
+    _testing_db = sqlite3.connect(DATABASE_FILE)
+    _testing_db.row_factory = sqlite3.Row
+    return _testing_db
+
+
+def close_testing_db():
+    """Cierra la conexión de testing."""
+    global _testing_db
+    if _testing_db is not None:
+        _testing_db.close()
+        _testing_db = None
 # def sql_execute(query, params=None):
 #     con = sqlite3.connect(DATABASE_FILE)
 #     cur = con.cursor()
@@ -148,6 +180,58 @@ def filtrar_por_genero(anime_principal_id, lista_ids):
     # Si hay pocos, los devuelvo todos, si no, muestro los primeros 3 al azar
     return random.sample(filtrados, k=min(3, len(filtrados)))
 
+def calcular_similitud_items():
+    """
+    Crea una tabla de items similares basada en co-ocurrencia.
+    Solo la crea si está vacía o no existe.
+    """
+    print("⏳ Verificando tabla item_similitudes...")
+    
+    # Verificar si la tabla existe
+    result = sql_select("""
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name='item_similitudes';
+    """)
+    
+    if result:  # La tabla existe
+        # Verificar si tiene datos
+        count = sql_select("SELECT COUNT(*) as cnt FROM item_similitudes;")
+        if count[0]["cnt"] > 0:
+            print("✅ item_similitudes ya existe con datos, omitiendo creación")
+            return
+    
+    print("🔄 Creando tabla item_similitudes...")
+    sql_execute("DROP TABLE IF EXISTS item_similitudes;")
+    sql_execute("""
+        CREATE TABLE item_similitudes (
+            anime_id_1 BIGINT,
+            anime_id_2 BIGINT,
+            similitud FLOAT,
+            PRIMARY KEY (anime_id_1, anime_id_2)
+        );
+    """)
+    
+    print("📊 Calculando similitudes (esto puede tardar varios minutos)...")
+    sql_execute("""
+        INSERT INTO item_similitudes (anime_id_1, anime_id_2, similitud)
+        SELECT 
+            i1.anime_id AS anime_id_1,
+            i2.anime_id AS anime_id_2,
+            COUNT(*) AS similitud
+        FROM interacciones i1
+        JOIN interacciones i2 
+            ON i1.username = i2.username 
+            AND i1.anime_id < i2.anime_id  
+        WHERE i1.score >= 7 AND i2.score >= 7
+        GROUP BY i1.anime_id, i2.anime_id
+        HAVING COUNT(*) >= 100  
+        ORDER BY similitud DESC;
+    """)
+    
+    count = sql_select("SELECT COUNT(*) as cnt FROM item_similitudes;")
+    print(f"✅ item_similitudes creada con {count[0]['cnt']} pares de similitudes")
+    
+
 ###
 def init():
     """Crea la tabla top_animes solo si no existe o está vacía."""
@@ -203,6 +287,35 @@ def recomendador_top_n(username, animes_relevantes, animes_desconocidos, N=9):
     id_animes = [i["anime_id"] for i in res]
     return id_animes
 
+def recomendador_item_based(username, animes_relevantes, animes_desconocidos, N=9):
+
+    if not animes_relevantes:
+        # Si no tiene valoraciones, caer en top_n
+        return recomendador_top_n(username, animes_relevantes, animes_desconocidos, N)
+    
+    placeholders = ",".join("?" * len(animes_relevantes))
+    
+    # Buscar animes similares a los que le gustaron
+    query = f"""
+        SELECT 
+            CASE 
+                WHEN s.anime_id_1 IN ({placeholders}) THEN s.anime_id_2
+                ELSE s.anime_id_1
+            END AS anime_id,
+            SUM(s.similitud) AS score_total
+        FROM item_similitudes s
+        WHERE (s.anime_id_1 IN ({placeholders}) OR s.anime_id_2 IN ({placeholders}))
+          AND anime_id NOT IN ({placeholders})  -- excluir los que ya vio
+        GROUP BY anime_id
+        ORDER BY score_total DESC
+        LIMIT ?;
+    """
+    
+    params = animes_relevantes * 4 + [N]
+    res = sql_select(query, params)
+    
+    return [r["anime_id"] for r in res]
+
 def genero_principal(anime_id):
 
     query = "SELECT genres FROM animes WHERE anime_id = ?"
@@ -224,6 +337,8 @@ def recomendar(username, animes_relevantes=None, animes_desconocidos=None, N=500
         return recomendar_azar(username, animes_relevantes, animes_desconocidos, N)
     elif RECOMENDADOR_ACTIVO == "top_n":
         return recomendador_top_n(username, animes_relevantes, animes_desconocidos, N)
+    elif RECOMENDADOR_ACTIVO == "item_based":
+        return recomendador_item_based(username, animes_relevantes, animes_desconocidos, N)
     else:
         raise ValueError(f"Recomendador '{RECOMENDADOR_ACTIVO}' no reconocido")
 
@@ -239,6 +354,8 @@ def recomendar_contexto(username, anime_id, animes_relevantes=None, animes_desco
         base_recs = recomendar_azar(username, animes_relevantes, animes_desconocidos, N * 3)
     elif RECOMENDADOR_ACTIVO == "top_n":
         base_recs = recomendador_top_n(username, animes_relevantes, animes_desconocidos, N * 3)
+    elif RECOMENDADOR_ACTIVO == "item_based":
+        base_recs = recomendador_item_based(username, animes_relevantes, animes_desconocidos, N * 3)
     else:
         raise ValueError(f"Recomendador '{RECOMENDADOR_ACTIVO}' no reconocido")
 
@@ -306,6 +423,17 @@ def test(username):
     return score
 
 if __name__ == '__main__':
+    # 🔧 Modo testing: usar conexión directa sin Flask
+    print("🧪 Modo testing activado\n")
+    
+    # Inicializar conexión para testing
+    init_testing_db()
+    
+    # Inicializar tablas si es necesario
+    init()
+    calcular_similitud_items()
+    
+    # Ejecutar tests
     user_animes = sql_select("""
         SELECT username 
         FROM usuarios 
@@ -329,6 +457,8 @@ if __name__ == '__main__':
         f.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {RECOMENDADOR_ACTIVO} - NDCG: {ndcg_mean:.6f}\n")
 
     print("✅ Resultados guardados en resultados.txt")
-
+    
+    # Cerrar conexión de testing
+    close_testing_db()
 
    

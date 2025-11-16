@@ -4,11 +4,15 @@ import recomendar
 app = Flask(__name__)
 app.debug = True
 
-try:
+with app.app_context():
     recomendar.init()
-except Exception as e:
-    print(f"⚠️ init() falló: {e}")
-    
+    recomendar.calcular_similitud_items()  # Esto se ejecuta UNA sola vez
+
+@app.teardown_appcontext
+def teardown_db(exception):
+    recomendar.close_db(exception)
+
+
 @app.get('/')
 def get_index():
     return render_template('login.html')
