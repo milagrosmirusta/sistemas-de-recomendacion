@@ -1,4 +1,4 @@
-## version: 1.4 -- recomendaciones item based
+## version: 1.5 -- two tower
 
 from mimetypes import init
 import sqlite3
@@ -12,7 +12,7 @@ import metricas
 DATABASE_FILE = os.path.dirname(__file__) + "/datos/mal.db"
 
 ### --- RECOMENDADOR USADO --- ###
-RECOMENDADOR_ACTIVO = "item_based"  # opciones: "azar", "top_n", "item_based", "user_based"
+RECOMENDADOR_ACTIVO = "two_tower"  # opciones: "azar", "top_n", "item_based", "two_tower"
 
 ## Conexión global
 # Flag para saber si estamos en Flask o testing directo
@@ -197,7 +197,7 @@ def calcular_similitud_items():
         # Verificar si tiene datos
         count = sql_select("SELECT COUNT(*) as cnt FROM item_similitudes;")
         if count[0]["cnt"] > 0:
-            print("✅ item_similitudes ya existe con datos, omitiendo creación")
+            print("item_similitudes ya existe con datos, omitiendo creación")
             return
     
     print("🔄 Creando tabla item_similitudes...")
@@ -211,7 +211,7 @@ def calcular_similitud_items():
         );
     """)
     
-    print("📊 Calculando similitudes (esto puede tardar varios minutos)...")
+    print("Calculando similitudes (esto puede tardar varios minutos)...")
     sql_execute("""
         INSERT INTO item_similitudes (anime_id_1, anime_id_2, similitud)
         SELECT 
@@ -229,7 +229,7 @@ def calcular_similitud_items():
     """)
     
     count = sql_select("SELECT COUNT(*) as cnt FROM item_similitudes;")
-    print(f"✅ item_similitudes creada con {count[0]['cnt']} pares de similitudes")
+    print(f"item_similitudes creada con {count[0]['cnt']} pares de similitudes")
     
 
 ###
@@ -245,7 +245,7 @@ def init():
         # Verificar si tiene datos
         count = sql_select("SELECT COUNT(*) as cnt FROM top_animes;")
         if count[0]["cnt"] > 0:
-            print("✅ init: top_animes ya existe con datos, omitiendo creación")
+            print("init: top_animes ya existe con datos, omitiendo creación")
             return
 
     print("🔄 init: creando top_animes")
@@ -259,7 +259,7 @@ def init():
     SELECT anime_id, members, score
     FROM animes
     ORDER BY score DESC, members DESC""")
-    print("✅ init: top_animes creada exitosamente")
+    print("init: top_animes creada exitosamente")
 
 
 
@@ -316,6 +316,124 @@ def recomendador_item_based(username, animes_relevantes, animes_desconocidos, N=
     
     return [r["anime_id"] for r in res]
 
+def recomendador_two_tower(username, animes_relevantes, animes_desconocidos, N=9):
+    """
+    Recomendador basado en Two-Tower Model (deep learning).
+    Usa embeddings de usuarios y animes para calcular similitud.
+    """
+    try:
+        import tensorflow as tf
+        import pickle
+        import numpy as np
+        from models.features import FeatureProcessor
+
+        # Ruta del modelo guardado
+        model_path = os.path.join(os.path.dirname(__file__), 'datos', 'embeddings')
+        model_file = os.path.join(model_path, 'two_tower_model.keras')
+        processor_file = os.path.join(model_path, 'feature_processor.pkl')
+
+        # Verificar si el modelo existe
+        if not os.path.exists(model_file):
+            print(f"⚠️  Modelo Two-Tower no encontrado en {model_file}")
+            print("   Usando item_based como fallback...")
+            return recomendador_item_based(username, animes_relevantes, animes_desconocidos, N)
+
+        # Cargar modelo y feature processor
+        model = tf.keras.models.load_model(model_file)
+
+        with open(processor_file, 'rb') as f:
+            feature_processor = pickle.load(f)
+
+        # Verificar si el usuario está en el vocabulario
+        if username not in feature_processor.user_to_idx:
+            print(f"⚠️  Usuario '{username}' no está en el vocabulario del modelo")
+            print("   Usando item_based como fallback...")
+            return recomendador_item_based(username, animes_relevantes, animes_desconocidos, N)
+
+        # Obtener features del usuario
+        user_feats = feature_processor.get_user_features(username)
+        if user_feats is None:
+            return recomendador_item_based(username, animes_relevantes, animes_desconocidos, N)
+
+        # Preparar inputs del usuario (batch de 1)
+        user_inputs = {
+            'user_id': np.array([user_feats['user_id']], dtype=np.int32),
+            'genre_prefs': np.expand_dims(user_feats['genre_prefs'], 0),
+            'avg_rating': np.array([user_feats['avg_rating']], dtype=np.float32),
+            'num_ratings': np.array([user_feats['num_ratings']], dtype=np.float32)
+        }
+
+        # Obtener embedding del usuario
+        user_embedding = model.get_user_embedding(user_inputs, training=False)
+        user_embedding = user_embedding.numpy()[0]  # [embedding_dim]
+
+        # Filtrar animes desconocidos que estén en el vocabulario
+        candidate_animes = []
+        for anime_id in animes_desconocidos:
+            if anime_id in feature_processor.anime_to_idx:
+                candidate_animes.append(anime_id)
+
+        if not candidate_animes:
+            print("⚠️  No hay animes candidatos en el vocabulario")
+            return recomendador_item_based(username, animes_relevantes, animes_desconocidos, N)
+
+        # Calcular scores para todos los candidatos
+        scores = []
+
+        # Procesar en batches para eficiencia
+        batch_size = 512
+        for i in range(0, len(candidate_animes), batch_size):
+            batch_animes = candidate_animes[i:i+batch_size]
+
+            # Obtener features de animes
+            anime_features_batch = []
+            valid_animes = []
+
+            for anime_id in batch_animes:
+                anime_feats = feature_processor.get_anime_features(anime_id)
+                if anime_feats is not None:
+                    anime_features_batch.append(anime_feats)
+                    valid_animes.append(anime_id)
+
+            if not anime_features_batch:
+                continue
+
+            # Preparar inputs de animes
+            anime_inputs = {
+                'anime_id': np.array([f['anime_id'] for f in anime_features_batch], dtype=np.int32),
+                'genres': np.array([f['genres'] for f in anime_features_batch], dtype=np.float32),
+                'score': np.array([f['score'] for f in anime_features_batch], dtype=np.float32),
+                'members': np.array([f['members'] for f in anime_features_batch], dtype=np.float32),
+                'episodes': np.array([f['episodes'] for f in anime_features_batch], dtype=np.float32),
+                'year': np.array([f['year'] for f in anime_features_batch], dtype=np.float32),
+                'studio_id': np.array([f['studio_id'] for f in anime_features_batch], dtype=np.int32)
+            }
+
+            # Obtener embeddings de animes
+            anime_embeddings = model.get_anime_embedding(anime_inputs, training=False)
+            anime_embeddings = anime_embeddings.numpy()  # [batch, embedding_dim]
+
+            # Calcular similitud (dot product)
+            batch_scores = np.dot(anime_embeddings, user_embedding)
+
+            # Guardar scores con anime_id
+            for anime_id, score in zip(valid_animes, batch_scores):
+                scores.append((anime_id, score))
+
+        # Ordenar por score descendente y tomar top N
+        scores.sort(key=lambda x: x[1], reverse=True)
+        top_animes = [anime_id for anime_id, score in scores[:N]]
+        # Agregar al final de recomendador_two_tower, antes del return:
+        print(f"\n[DEBUG {username}] Sample scores: {[f'{s:.3f}' for _, s in scores[:5]]}")
+        print(f"[DEBUG {username}] Score range: min={min(s for _, s in scores):.3f}, max={max(s for _, s in scores):.3f}")
+        return top_animes
+
+    except Exception as e:
+        print(f"❌ Error en recomendador_two_tower: {e}")
+        print("   Usando item_based como fallback...")
+        return recomendador_item_based(username, animes_relevantes, animes_desconocidos, N)
+
+
 def genero_principal(anime_id):
 
     query = "SELECT genres FROM animes WHERE anime_id = ?"
@@ -339,6 +457,8 @@ def recomendar(username, animes_relevantes=None, animes_desconocidos=None, N=500
         return recomendador_top_n(username, animes_relevantes, animes_desconocidos, N)
     elif RECOMENDADOR_ACTIVO == "item_based":
         return recomendador_item_based(username, animes_relevantes, animes_desconocidos, N)
+    elif RECOMENDADOR_ACTIVO == "two_tower":
+        return recomendador_two_tower(username, animes_relevantes, animes_desconocidos, N)
     else:
         raise ValueError(f"Recomendador '{RECOMENDADOR_ACTIVO}' no reconocido")
 
@@ -356,6 +476,8 @@ def recomendar_contexto(username, anime_id, animes_relevantes=None, animes_desco
         base_recs = recomendador_top_n(username, animes_relevantes, animes_desconocidos, N * 3)
     elif RECOMENDADOR_ACTIVO == "item_based":
         base_recs = recomendador_item_based(username, animes_relevantes, animes_desconocidos, N * 3)
+    elif RECOMENDADOR_ACTIVO == "two_tower":
+        base_recs = recomendador_two_tower(username, animes_relevantes, animes_desconocidos, N * 3)
     else:
         raise ValueError(f"Recomendador '{RECOMENDADOR_ACTIVO}' no reconocido")
 
@@ -401,6 +523,9 @@ def test(username):
     animes_relevantes = items_valorados(username)
     animes_desconocidos = items_vistos(username) + items_desconocidos(username)
 
+    # 🔍 DEBUG: Ver información del usuario
+    print(f"[DEBUG] {username}: {len(animes_relevantes)} valorados, {len(animes_desconocidos)} desconocidos", end=" ")
+
     random.shuffle(animes_relevantes)
 
     corte = int(len(animes_relevantes)*0.8)
@@ -408,6 +533,9 @@ def test(username):
     animes_relevantes_testing = animes_relevantes[corte:] + animes_desconocidos
 
     recomendacion = recomendar(username, animes_relevantes_training, animes_relevantes_testing, 20)
+
+    # 🔍 DEBUG: Ver cuántas recomendaciones se generaron
+    print(f"| recomendaciones: {len(recomendacion)}", end=" ")
 
     relevance_scores = []
     for id in recomendacion:
@@ -417,9 +545,14 @@ def test(username):
         else:
             rating = 0
 
-
         relevance_scores.append(rating)
+    
     score = metricas.normalized_discounted_cumulative_gain(relevance_scores)
+    
+    # 🔍 DEBUG: Ver distribución de ratings en las recomendaciones
+    num_relevant = sum(1 for r in relevance_scores if r > 0)
+    print(f"| relevantes: {num_relevant}/20", end=" ")
+    
     return score
 
 if __name__ == '__main__':
@@ -453,12 +586,10 @@ if __name__ == '__main__':
 
     # 💾 Guardar resultado
     from datetime import datetime
-    with open("resultados.txt", "a", encoding="utf-8") as f:
+    with open("./resultados.txt", "a", encoding="utf-8") as f:
         f.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {RECOMENDADOR_ACTIVO} - NDCG: {ndcg_mean:.6f}\n")
 
     print("✅ Resultados guardados en resultados.txt")
     
     # Cerrar conexión de testing
     close_testing_db()
-
-   
