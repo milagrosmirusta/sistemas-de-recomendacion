@@ -65,6 +65,11 @@ class TwoTowerModel(keras.Model):
 
         # --- CAPA FINAL --- #
         self.dot_product = layers.Dot(axes=1, normalize=True, name='similarity')
+        # Transformar dot product normalizado [-1, 1] a probabilidad [0, 1]
+        # Formula: (dot + 1) / 2
+        self.to_probability = layers.Lambda(lambda x: (x + 1.0) / 2.0, name='to_probability')
+
+
 
     def get_config(self):
         """Configuración para serialización."""
@@ -106,7 +111,7 @@ class TwoTowerModel(keras.Model):
             anime_emb,
             inputs['genres'],
             studio_emb,
-            tf.expand_dims(inputs['score'], -1),
+            #tf.expand_dims(inputs['score'], -1),
             tf.expand_dims(inputs['members'], -1),
             tf.expand_dims(inputs['episodes'], -1),
             tf.expand_dims(inputs['year'], -1)
@@ -119,7 +124,8 @@ class TwoTowerModel(keras.Model):
         anime_tower = self.anime_normalization(anime_tower, training=training)
 
         similarity = self.dot_product([user_tower, anime_tower])
-        return similarity
+        probability = self.to_probability(similarity)
+        return probability
 
     def get_user_embedding(self, inputs, training=False):
         # ... SIN CAMBIOS ...
@@ -147,7 +153,7 @@ class TwoTowerModel(keras.Model):
             anime_emb,
             inputs['genres'],
             studio_emb,
-            tf.expand_dims(inputs['score'], -1),
+            #tf.expand_dims(inputs['score'], -1), se lo saco para evitar feature leaking
             tf.expand_dims(inputs['members'], -1),
             tf.expand_dims(inputs['episodes'], -1),
             tf.expand_dims(inputs['year'], -1)

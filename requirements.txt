@@ -1,0 +1,11 @@
+
+Flask==3.0.0
+Werkzeug==3.0.1
+tensorflow==2.18.0
+numpy==1.26.4
+scikit-learn==1.5.2
+pandas==2.2.3
+python-dotenv==1.0.0
+
+# Optional: Para desarrollo/testing
+pytest==8.3.3

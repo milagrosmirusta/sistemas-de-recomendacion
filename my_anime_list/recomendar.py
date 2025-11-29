@@ -12,7 +12,8 @@ import metricas
 DATABASE_FILE = os.path.dirname(__file__) + "/datos/mal.db"
 
 ### --- RECOMENDADOR USADO --- ###
-RECOMENDADOR_ACTIVO = "two_tower"  # opciones: "azar", "top_n", "item_based", "two_tower"
+RECOMENDADOR_ACTIVO = "two_tower"  # opciones: "azar", "top_n", "item_based", "two_tower", "content_based", "content_based_avanzado", "hibrido""
+
 
 ## Conexión global
 # Flag para saber si estamos en Flask o testing directo
@@ -316,10 +317,188 @@ def recomendador_item_based(username, animes_relevantes, animes_desconocidos, N=
     
     return [r["anime_id"] for r in res]
 
+def recomendador_content_based(username, animes_relevantes, animes_desconocidos, N=9):
+    """
+    Recomienda basándose sólo en los géneros de los animes gustados
+    """
+    if not animes_relevantes:
+        return recomendador_top_n(username, animes_relevantes, animes_desconocidos, N)
+    
+    # Obtener géneros de animes que le gustaron (score >= 7)
+    query = f"""
+        SELECT a.genres
+        FROM animes a
+        JOIN interacciones i ON a.anime_id = i.anime_id
+        WHERE i.username = ? AND i.score >= 7
+    """
+    rows = sql_select(query, [username])
+    
+    # Contar géneros favoritos
+    genre_counts = {}
+    for row in rows:
+        if row['genres']:
+            for genre in row['genres'].split(','):
+                genre = genre.strip()
+                genre_counts[genre] = genre_counts.get(genre, 0) + 1
+    
+    # Ordenar géneros por frecuencia
+    top_genres = sorted(genre_counts.items(), key=lambda x: x[1], reverse=True)[:3]
+    
+    if not top_genres:
+        return recomendador_top_n(username, animes_relevantes, animes_desconocidos, N)
+    
+    # Buscar animes con esos géneros
+    genre_patterns = [f"%{g[0]}%" for g in top_genres]
+    placeholders_relevant = ",".join("?" * len(animes_relevantes))
+    
+    # Query para encontrar animes similares
+    query = f"""
+        SELECT DISTINCT a.anime_id, a.score, a.members
+        FROM animes a
+        WHERE (a.genres LIKE ? OR a.genres LIKE ? OR a.genres LIKE ?)
+          AND a.anime_id NOT IN ({placeholders_relevant})
+          AND a.anime_id IN ({",".join("?" * len(animes_desconocidos))})
+        ORDER BY a.score DESC, a.members DESC
+        LIMIT ?
+    """
+    
+    params = genre_patterns + animes_relevantes + animes_desconocidos + [N]
+    results = sql_select(query, params)
+    
+    return [r['anime_id'] for r in results]
+
+def recomendador_content_based_avanzado(username, animes_relevantes, animes_desconocidos, N=9):
+    """
+    Content-based con múltiples features: géneros, studios, score range.
+    """
+    if not animes_relevantes:
+        return recomendador_top_n(username, animes_relevantes, animes_desconocidos, N)
+    
+    # Analizar preferencias del usuario
+    query = f"""
+        SELECT a.genres, a.studios, a.score
+        FROM animes a
+        JOIN interacciones i ON a.anime_id = i.anime_id
+        WHERE i.username = ? AND i.score >= 7
+    """
+    rows = sql_select(query, [username])
+    
+    # Extraer preferencias
+    genre_counts = {}
+    studio_counts = {}
+    scores = []
+    
+    for row in rows:
+        # Géneros
+        if row['genres']:
+            for genre in row['genres'].split(','):
+                genre = genre.strip()
+                genre_counts[genre] = genre_counts.get(genre, 0) + 1
+        
+        # Studios
+        if row['studios']:
+            for studio in row['studios'].split(','):
+                studio = studio.strip()
+                studio_counts[studio] = studio_counts.get(studio, 0) + 1
+        
+        # Scores
+        if row['score']:
+            scores.append(row['score'])
+    
+    if not genre_counts:
+        return recomendador_top_n(username, animes_relevantes, animes_desconocidos, N)
+    
+    # Top géneros y studios
+    top_genres = sorted(genre_counts.items(), key=lambda x: x[1], reverse=True)[:3]
+    top_studios = sorted(studio_counts.items(), key=lambda x: x[1], reverse=True)[:2]
+    
+    # Score range preferido
+    avg_score = sum(scores) / len(scores) if scores else 7.0
+    min_score = max(avg_score - 1.5, 0)
+    
+    # Calcular similarity score para cada anime candidato
+    candidate_scores = []
+    
+    for anime_id in animes_desconocidos:
+        anime = sql_select("SELECT genres, studios, score FROM animes WHERE anime_id = ?", [anime_id])
+        if not anime:
+            continue
+        
+        anime = anime[0]
+        similarity = 0
+        
+        # Score por géneros (peso: 3)
+        if anime['genres']:
+            anime_genres = [g.strip() for g in anime['genres'].split(',')]
+            for genre, _ in top_genres:
+                if genre in anime_genres:
+                    similarity += 3
+        
+        # Score por studios (peso: 2)
+        if anime['studios']:
+            anime_studios = [s.strip() for s in anime['studios'].split(',')]
+            for studio, _ in top_studios:
+                if studio in anime_studios:
+                    similarity += 2
+        
+        # Score por rating similar (peso: 1)
+        if anime['score'] and abs(anime['score'] - avg_score) <= 1.5:
+            similarity += 1
+        
+        if similarity > 0:
+            candidate_scores.append((anime_id, similarity))
+    
+    # Ordenar por similarity y tomar top N
+    candidate_scores.sort(key=lambda x: x[1], reverse=True)
+    return [anime_id for anime_id, _ in candidate_scores[:N]]
+
+def mezclar_recomendaciones(lista1, lista2, N):
+    """
+    Mezcla dos listas de recomendaciones intercalando, sin duplicados.
+    Prioriza lista1 (aparece primero en el intercalado).
+    """
+    resultado = []
+    i, j = 0, 0
+    
+    while len(resultado) < N and (i < len(lista1) or j < len(lista2)):
+        # Intentar agregar de lista1 primero
+        if i < len(lista1) and lista1[i] not in resultado:
+            resultado.append(lista1[i])
+            i += 1
+        
+        # Luego de lista2
+        if len(resultado) < N and j < len(lista2) and lista2[j] not in resultado:
+            resultado.append(lista2[j])
+            j += 1
+        
+        # Avanzar índices si ya están en resultado
+        if i < len(lista1) and lista1[i] in resultado:
+            i += 1
+        if j < len(lista2) and lista2[j] in resultado:
+            j += 1
+    
+    return resultado[:N]
+def recomendador_hibrido(username, animes_relevantes, animes_desconocidos, N=9):
+    """
+    Recomendador híbrido: mezcla Top-N (popularidad) con Item-Based.
+    """
+    num_ratings = len(animes_relevantes)
+        
+    if num_ratings < 10:
+        return recomendador_top_n(username, animes_relevantes, animes_desconocidos, N)
+        
+    n_item = int(N * 0.8)
+    n_content = N - n_item
+        
+    item_recs = recomendador_item_based(username, animes_relevantes, animes_desconocidos, n_item * 2)
+    content_recs = recomendador_content_based_avanzado(username, animes_relevantes, animes_desconocidos, n_content * 2)
+        
+    return mezclar_recomendaciones(item_recs, content_recs, N)
+
+
 def recomendador_two_tower(username, animes_relevantes, animes_desconocidos, N=9):
     """
-    Recomendador basado en Two-Tower Model (deep learning).
-    Usa embeddings de usuarios y animes para calcular similitud.
+    Recomendador basado en Two-Tower Model. Usa embeddings de usuarios y animes para calcular similitud.
     """
     try:
         import tensorflow as tf
@@ -459,6 +638,12 @@ def recomendar(username, animes_relevantes=None, animes_desconocidos=None, N=500
         return recomendador_item_based(username, animes_relevantes, animes_desconocidos, N)
     elif RECOMENDADOR_ACTIVO == "two_tower":
         return recomendador_two_tower(username, animes_relevantes, animes_desconocidos, N)
+    elif RECOMENDADOR_ACTIVO == "content_based":
+        return recomendador_content_based(username, animes_relevantes, animes_desconocidos, N)
+    elif RECOMENDADOR_ACTIVO == "content_based_avanzado":
+        return recomendador_content_based_avanzado(username, animes_relevantes, animes_desconocidos, N)
+    elif RECOMENDADOR_ACTIVO == "hibrido":
+        return recomendador_hibrido(username, animes_relevantes, animes_desconocidos, N)
     else:
         raise ValueError(f"Recomendador '{RECOMENDADOR_ACTIVO}' no reconocido")
 
@@ -478,6 +663,12 @@ def recomendar_contexto(username, anime_id, animes_relevantes=None, animes_desco
         base_recs = recomendador_item_based(username, animes_relevantes, animes_desconocidos, N * 3)
     elif RECOMENDADOR_ACTIVO == "two_tower":
         base_recs = recomendador_two_tower(username, animes_relevantes, animes_desconocidos, N * 3)
+    elif RECOMENDADOR_ACTIVO == "content_based":
+         base_recs = recomendador_content_based(username, animes_relevantes, animes_desconocidos, N * 3)
+    elif RECOMENDADOR_ACTIVO == "content_based_avanzado":
+        base_recs =recomendador_content_based_avanzado(username, animes_relevantes, animes_desconocidos, N * 3)
+    elif RECOMENDADOR_ACTIVO == "hibrido":
+        base_recs = recomendador_hibrido(username, animes_relevantes, animes_desconocidos, N * 3)
     else:
         raise ValueError(f"Recomendador '{RECOMENDADOR_ACTIVO}' no reconocido")
 
@@ -543,6 +734,7 @@ def test(username):
         if res is not None and len(res) > 0:
             rating = res[0][0]
         else:
+            
             rating = 0
 
         relevance_scores.append(rating)
@@ -567,11 +759,13 @@ if __name__ == '__main__':
     calcular_similitud_items()
     
     # Ejecutar tests
-    user_animes = sql_select("""
+    number = 100
+    interacciones = 10
+    user_animes = sql_select(f"""
         SELECT username 
         FROM usuarios 
-        WHERE (SELECT count(*) FROM interacciones WHERE username = usuarios.username) >= 100 
-        LIMIT 50;
+        WHERE (SELECT count(*) FROM interacciones WHERE username = usuarios.username) >= {interacciones} 
+        LIMIT {number};
     """)
     user_animes = [i["username"] for i in user_animes]
 
@@ -582,12 +776,14 @@ if __name__ == '__main__':
         print(f"{user} >> {score:.6f}")
 
     ndcg_mean = sum(scores)/len(scores)
-    print(f"\nNDCG: {ndcg_mean:.6f} --> {RECOMENDADOR_ACTIVO}")
+    print(f"\nNDCG: {ndcg_mean:.6f} --> {RECOMENDADOR_ACTIVO} - {number} users +{interacciones} interacciones")
 
     # 💾 Guardar resultado
     from datetime import datetime
-    with open("./resultados.txt", "a", encoding="utf-8") as f:
-        f.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {RECOMENDADOR_ACTIVO} - NDCG: {ndcg_mean:.6f}\n")
+    ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    READ_FILE = os.path.join(ROOT_DIR, "resultados.txt")
+    with open(READ_FILE, "a", encoding="utf-8") as f:
+        f.write(f"\n{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {RECOMENDADOR_ACTIVO} - NDCG: {ndcg_mean:.6f} - {number} users +{interacciones} interacciones")
 
     print("✅ Resultados guardados en resultados.txt")
     

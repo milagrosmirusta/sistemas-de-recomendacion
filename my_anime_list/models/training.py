@@ -140,7 +140,7 @@ class DataGenerator(keras.utils.Sequence):
             np.random.shuffle(self.indices)
 
 
-def train_model(epochs=10, batch_size=256, validation_split=0.2, embedding_dim=64, save_path=None):
+def train_model(epochs=20, batch_size=256, validation_split=0.2, embedding_dim=64, save_path=None):
     """
     Entrena el modelo Two-Tower desde cero.
 
@@ -173,7 +173,7 @@ def train_model(epochs=10, batch_size=256, validation_split=0.2, embedding_dim=6
     # 2. Preparar datos de entrenamiento
     print("\n2️⃣ Preparando datos de entrenamiento...")
     user_ids, anime_ids, labels = feature_processor.prepare_training_data(
-        min_interactions=20,
+        min_interactions=10,
         negative_ratio=1
     )
 

@@ -234,7 +234,7 @@ class FeatureProcessor:
             'studio_id': studio_idx
         }
 
-    def prepare_training_data(self, min_interactions=20, negative_ratio=1):
+    def prepare_training_data(self, min_interactions=10, negative_ratio=1):
         """
         Prepara datos de entrenamiento con samples positivos y negativos.
 

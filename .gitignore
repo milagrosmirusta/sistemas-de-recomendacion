@@ -3,4 +3,6 @@ que_libro_leo/
 resultados.txt
 my_anime_list/templates/recomendaciones v1.html
 my_anime_list/datos/mal.db
-
+.vscode/
+datos/
+.venv/
