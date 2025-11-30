@@ -100,18 +100,18 @@ def get_recomendaciones():
 @app.get('/recomendaciones/<int:anime_id>')
 def get_recomendaciones_anime(anime_id):
     username = request.cookies.get('username')
-    animes_id, sistema_usado = recomendar.recomendar_contexto(username, anime_id)
+    anime_principal_id = anime_id
+    animes_id, sistema_usado = recomendar.recomendar_contexto(username, anime_principal_id)
 
-    for anime_id in animes_id:
-        recomendar.insertar_interacciones(anime_id, username, 0)
+    for rec_anime_id in animes_id:
+        recomendar.insertar_interacciones(rec_anime_id, username, 0)
 
     animes_finales = recomendar.datos_animes(animes_id)
     cant_valorados = len(recomendar.items_valorados(username)) 
     cant_vistos = len(recomendar.items_vistos(username))
-    rec = recomendar.obtener_anime(anime_id)
+    rec = recomendar.obtener_anime(anime_principal_id)
 
     return render_template("recomendaciones_animes.html", rec=rec, animes_recomendados=animes_finales, username=username, cant_valorados=cant_valorados, cant_vistos=cant_vistos)
-
 
 @app.post('/recomendaciones')
 def post_recomendaciones():

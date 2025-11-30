@@ -1,5 +1,3 @@
-## version: 1.5 -- two tower
-
 from mimetypes import init
 import sqlite3
 import os
@@ -9,7 +7,6 @@ import time
 
 import metricas
 
-#DATABASE_FILE = os.path.dirname(os.path.abspath("__file__")) + "/datos/qll.db"
 DATABASE_FILE = os.path.dirname(__file__) + "/datos/mal.db"
 
 ### --- RECOMENDADOR USADO --- ###
@@ -118,7 +115,6 @@ def crear_usuario(username):
 def insertar_interacciones(anime_id, username, score):
     if score == 0:
         # Si score es 0 (marcar como visto), solo insertar si NO existe
-        # Esto evita sobrescribir valoraciones existentes
         query = "INSERT INTO interacciones(anime_id, username, score) VALUES (?, ?, ?) ON CONFLICT (anime_id, username) DO NOTHING;"
         sql_execute(query, [anime_id, username, score])
     else:
@@ -186,7 +182,7 @@ def filtrar_por_genero(anime_principal_id, lista_ids, N=3):
 
     filtrados = []
     for a in candidatos:
-        # Manejar casos donde genres puede ser None
+        # Manejo casos donde genres puede ser None
         if not a["genres"]:
             continue
         generos = [g.strip() for g in a["genres"].split(",")]
@@ -201,10 +197,6 @@ def filtrar_por_genero(anime_principal_id, lista_ids, N=3):
     return random.sample(filtrados, k=min(N, len(filtrados)))
 
 def calcular_similitud_items():
-    """
-    Crea una tabla de items similares basada en co-ocurrencia.
-    Solo la crea si está vacía o no existe.
-    """
     print("⏳ Verificando tabla item_similitudes...")
     
     # Verificar si la tabla existe
@@ -252,7 +244,6 @@ def calcular_similitud_items():
     print(f"item_similitudes creada con {count[0]['cnt']} pares de similitudes")
     
 
-###
 def init():
     """Crea la tabla top_animes solo si no existe o está vacía."""
     # Verificar si la tabla existe y tiene datos
@@ -528,17 +519,17 @@ def recomendador_hibrido(username, animes_relevantes, animes_desconocidos, N=9):
     num_ratings = len(animes_relevantes)
         
     if num_ratings < 10:
-        print(f"[Híbrido→TopN]", end=" | ")  # ✅ LOGGING
+        print(f"[Híbrido→TopN]", end=" | ")  
         return recomendador_top_n(username, animes_relevantes, animes_desconocidos, N)
     elif num_ratings < 50:
-        print(f"[Híbrido→Item80%+Content20%]", end=" | ")  # ✅ LOGGING
+        print(f"[Híbrido→Item80%+Content20%]", end=" | ") 
         n_item = int(N * 0.8)
         n_content = N - n_item 
         item_recs = recomendador_item_based(username, animes_relevantes, animes_desconocidos, n_item)
         content_recs = recomendador_content_based_avanzado(username, animes_relevantes, animes_desconocidos, n_content * 2)
         return mezclar_recomendaciones(item_recs, content_recs, N)
     else:
-        print(f"[Híbrido→Item100%]", end=" | ")  # ✅ LOGGING
+        print(f"[Híbrido→Item100%]", end=" | ") 
         return recomendador_item_based(username, animes_relevantes, animes_desconocidos, N)
     
 
@@ -808,18 +799,18 @@ def recomendar_contexto(username, anime_id, animes_relevantes=None, animes_desco
         animes_desconocidos = items_desconocidos(username)
 
     # Siempre uso content-based para contexto
-    sistema_nombre = "Basado en Contenido (Contextual)"
+    sistema_nombre = "Basado en Contenido (Content-Based)"
 
-    base_recs = recomendador_content_based_avanzado(username, animes_relevantes, animes_desconocidos, N * 5)
-    filtrados = filtrar_por_genero(anime_id, base_recs, N)
+    base_recs = recomendador_content_based_avanzado(username, animes_relevantes, animes_desconocidos, N * 10)
+    filtrados = filtrar_por_genero(anime_id, base_recs)
 
-    # Si el filtro deja pocos resultados, completar con el resto
+    # Excluyo el anime anime principal
+    filtrados = [x for x in filtrados if x != anime_id]
     if len(filtrados) < N:
         faltan = [x for x in base_recs if x not in filtrados and x != anime_id]
         random.shuffle(faltan)
         filtrados += faltan[:N - len(filtrados)]
 
-    # ✅ Retornar ambos valores
     return filtrados[:N], sistema_nombre
 
 
