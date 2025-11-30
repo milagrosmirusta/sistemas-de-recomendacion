@@ -43,11 +43,11 @@ def get_db():
         return db
 
 
-def close_db(e=None):
-    """Cierra la conexión si existe al final del request."""
-    db = g.pop('db', None)
-    if db is not None:
-        db.close()
+# def close_db(e=None):
+#     """Cierra la conexión si existe al final del request."""
+#     db = g.pop('db', None)
+#     if db is not None:
+#         db.close()
 
 
 def init_testing_db():
@@ -710,67 +710,88 @@ def genero_principal(anime_id):
     return generos[0] if generos else None
 
 
-def recomendar(username, animes_relevantes=None, animes_desconocidos=None, N=500):
+def recomendar(username, animes_relevantes=None, animes_desconocidos=None, N=9):
     if not animes_relevantes:
         animes_relevantes = items_valorados(username)
 
     if not animes_desconocidos:
         animes_desconocidos = items_desconocidos(username)
 
-    if RECOMENDADOR_ACTIVO == "azar":
-        return recomendar_azar(username, animes_relevantes, animes_desconocidos, N)
-    elif RECOMENDADOR_ACTIVO == "top_n":
-        return recomendador_top_n(username, animes_relevantes, animes_desconocidos, N)
-    elif RECOMENDADOR_ACTIVO == "item_based":
-        return recomendador_item_based(username, animes_relevantes, animes_desconocidos, N)
-    elif RECOMENDADOR_ACTIVO == "two_tower":
-        return recomendador_two_tower(username, animes_relevantes, animes_desconocidos, N)
-    elif RECOMENDADOR_ACTIVO == "content_based":
-        return recomendador_content_based(username, animes_relevantes, animes_desconocidos, N)
-    elif RECOMENDADOR_ACTIVO == "content_based_avanzado":
-        return recomendador_content_based_avanzado(username, animes_relevantes, animes_desconocidos, N)
-    elif RECOMENDADOR_ACTIVO == "hibrido":
-        return recomendador_hibrido(username, animes_relevantes, animes_desconocidos, N)
+    # ✅ Determinar qué sistema se usará
+    num_ratings = len(animes_relevantes)
+    
+    if RECOMENDADOR_ACTIVO == "hibrido":
+        
+        if num_ratings < 10:
+            sistema_nombre = "Popular (Top-N)"
+        elif num_ratings < 50:
+            sistema_nombre = "Híbrido (80% Colaborativo + 20% Contenido)"
+        else:
+            sistema_nombre = "Colaborativo (Item-Based)"
     elif RECOMENDADOR_ACTIVO == "hibrido_con_tt":
-        return recomendador_hibrido_con_tt(username, animes_relevantes, animes_desconocidos, N)
+        if num_ratings < 10:
+            sistema_nombre = "Popular (Top-N)"
+        elif num_ratings < 200:
+            sistema_nombre = "Híbrido (80% Colaborativo + 20% Contenido)"
+        else:
+            sistema_nombre = "Híbrido Avanzado (50% Two-Tower + 30% Colaborativo + 20% Contenido)"
+    else:
+        # Mapear nombres legibles para otros sistemas
+        nombres_sistemas = {
+            "azar": "Aleatorio",
+            "top_n": "Popular (Top-N)",
+            "item_based": "Colaborativo (Item-Based)",
+            "two_tower": "Deep Learning (Two-Tower)",
+            "content_based": "Basado en Contenido",
+            "content_based_avanzado": "Basado en Contenido Avanzado"
+        }
+        sistema_nombre = nombres_sistemas.get(RECOMENDADOR_ACTIVO, RECOMENDADOR_ACTIVO)
+
+    # Ejecutar la recomendación
+    if RECOMENDADOR_ACTIVO == "azar":
+        animes = recomendar_azar(username, animes_relevantes, animes_desconocidos, N)
+    elif RECOMENDADOR_ACTIVO == "top_n":
+        animes = recomendador_top_n(username, animes_relevantes, animes_desconocidos, N)
+    elif RECOMENDADOR_ACTIVO == "item_based":
+        animes = recomendador_item_based(username, animes_relevantes, animes_desconocidos, N)
+    elif RECOMENDADOR_ACTIVO == "two_tower":
+        animes = recomendador_two_tower(username, animes_relevantes, animes_desconocidos, N)
+    elif RECOMENDADOR_ACTIVO == "content_based":
+        animes = recomendador_content_based(username, animes_relevantes, animes_desconocidos, N)
+    elif RECOMENDADOR_ACTIVO == "content_based_avanzado":
+        animes = recomendador_content_based_avanzado(username, animes_relevantes, animes_desconocidos, N)
+    elif RECOMENDADOR_ACTIVO == "hibrido":
+        animes = recomendador_hibrido(username, animes_relevantes, animes_desconocidos, N)
+    elif RECOMENDADOR_ACTIVO == "hibrido_con_tt":
+        animes = recomendador_hibrido_con_tt(username, animes_relevantes, animes_desconocidos, N)
     else:
         raise ValueError(f"Recomendador '{RECOMENDADOR_ACTIVO}' no reconocido")
 
-def recomendar_contexto(username, anime_id, animes_relevantes=None, animes_desconocidos=None, N=500):
+    return animes, sistema_nombre
+
+def recomendar_contexto(username, anime_id, animes_relevantes=None, animes_desconocidos=None, N=3):
+
     if not animes_relevantes:
         animes_relevantes = items_valorados(username)
 
     if not animes_desconocidos:
         animes_desconocidos = items_desconocidos(username)
+    
+    # Siempre uso content-based para contexto 
+    sistema_nombre = "Basado en Contenido (Contextual)"
 
-    # Primero obtenemos las recomendaciones base (según el modo activo)
-    if RECOMENDADOR_ACTIVO == "azar":
-        base_recs = recomendar_azar(username, animes_relevantes, animes_desconocidos, N * 3)
-    elif RECOMENDADOR_ACTIVO == "top_n":
-        base_recs = recomendador_top_n(username, animes_relevantes, animes_desconocidos, N * 3)
-    elif RECOMENDADOR_ACTIVO == "item_based":
-        base_recs = recomendador_item_based(username, animes_relevantes, animes_desconocidos, N * 3)
-    elif RECOMENDADOR_ACTIVO == "two_tower":
-        base_recs = recomendador_two_tower(username, animes_relevantes, animes_desconocidos, N * 3)
-    elif RECOMENDADOR_ACTIVO == "content_based":
-         base_recs = recomendador_content_based(username, animes_relevantes, animes_desconocidos, N * 3)
-    elif RECOMENDADOR_ACTIVO == "content_based_avanzado":
-        base_recs =recomendador_content_based_avanzado(username, animes_relevantes, animes_desconocidos, N * 3)
-    elif RECOMENDADOR_ACTIVO == "hibrido":
-        base_recs = recomendador_hibrido(username, animes_relevantes, animes_desconocidos, N * 3)
-    else:
-        raise ValueError(f"Recomendador '{RECOMENDADOR_ACTIVO}' no reconocido")
-
-    # Luego filtramos por género del anime principal
+    base_recs = recomendador_content_based_avanzado(username, animes_relevantes, animes_desconocidos, N * 5)
     filtrados = filtrar_por_genero(anime_id, base_recs)
-
-    # Si el filtro deja pocos resultados, completamos con el resto
+    
+    # Si el filtro deja pocos resultados, completar con el resto
     if len(filtrados) < N:
         faltan = [x for x in base_recs if x not in filtrados and x != anime_id]
         random.shuffle(faltan)
-        filtrados += faltan[: N - len(filtrados)]
+        filtrados += faltan[:N - len(filtrados)]
+    
+    # ✅ Retornar ambos valores
+    return filtrados[:N], sistema_nombre
 
-    return filtrados
 
 def buscar_ids_por_genero(genero, limit=9):
     """Devuelve los IDs de animes que contengan el género dado."""
@@ -874,7 +895,7 @@ if __name__ == '__main__':
     
     # Parámetros de evaluación
     number = 100
-    interacciones = 5
+    interacciones = 300
     
     print(f"📊 Configuración: {number} usuarios con mínimo {interacciones} interacciones")
     print(f"🎯 Recomendador activo: {RECOMENDADOR_ACTIVO}")

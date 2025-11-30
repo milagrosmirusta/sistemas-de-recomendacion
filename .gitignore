@@ -6,3 +6,4 @@ my_anime_list/datos/mal.db
 .vscode/
 datos/
 .venv/
+*.ipynb

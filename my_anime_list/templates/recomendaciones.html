@@ -81,6 +81,23 @@
     }
   </script>
 </head>
+	<!-- Onboarding para primera visita -->
+	{% if first_visit %}
+	<div class="bg-pink-50 border border-violet-200 rounded-lg p-6 mb-6">
+		<div class="flex items-start space-x-4">
+			<div class="flex-1">
+				<h3 class="text-lg font-bold text-violet-800 mb-2">¡Bienvenido al sistema de recomendaciones!</h3>
+				<div class="text-violet-700 space-y-2">
+					<p><strong>¿Cómo funciona?</strong></p>
+					<ul class="list-disc list-inside space-y-1 ml-4">
+						<li>Evalúa los animes que aparecen abajo</li>
+						<li>El sistema evoluciona: Popular → Híbrido → Colaborativo</li>
+					</ul>
+				</div>
+			</div>
+		</div>
+	</div>
+	{% endif %}
 
 <body class="min-h-screen text-gray-800 px-8 py-10 font-sans">
   <div class="max-w-7xl mx-auto">
@@ -96,6 +113,12 @@
 
       <div class="flex items-center gap-3 text-sm text-gray-600">
         <span> 17/11 - {{ cant_vistos }} vistos · {{ cant_valorados }} valorados</span>
+        <div class="flex flex-col items-end gap-1">
+				{% if cant_valorados > 0 %}
+				<div class="text-sm text-red-600">
+					<strong>Sistema de recomendación:</strong> {{ sistema_usado }}
+				</div>
+				{% endif %}
         <a href="/reset"
            class="bg-fuchsia-400 hover:bg-fuchsia-500 text-white font-semibold text-xs px-3 py-1 rounded-full transition">
           Reset

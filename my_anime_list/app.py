@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template, make_response, redirect
+from flask import Flask, request, render_template, make_response, redirect, g
 import recomendar
 
 app = Flask(__name__)
@@ -8,10 +8,24 @@ with app.app_context():
     recomendar.init()
     recomendar.calcular_similitud_items()  # Esto se ejecuta UNA sola vez
 
+def is_first_visit(username):
+    """Verifica si es la primera visita del usuario"""
+    conn = recomendar.get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) as count FROM interacciones WHERE username = ?", [username])
+    count = cursor.fetchone()['count']
+    #conn.close()
+    return count == 0
+
+#@app.teardown_appcontext
+#def teardown_db(exception):
+#    recomendar.close_db(exception)
 @app.teardown_appcontext
 def teardown_db(exception):
-    recomendar.close_db(exception)
-
+    """Flask llama esto automáticamente AL FINAL del request"""
+    db = g.pop('db', None)
+    if db is not None:
+        db.close()
 
 @app.get('/')
 def get_index():
@@ -37,75 +51,64 @@ def post_index():
 @app.get('/recomendaciones')
 def get_recomendaciones():
     username = request.cookies.get('username')
-    genero = request.args.get('genero', '').strip()
+    #Verifico primera visita
+    first_visit = is_first_visit(username)
 
+    animes_id, sistema_usado = recomendar.recomendar(username)
+
+    for anime_id in animes_id:
+        recomendar.insertar_interacciones(anime_id, username, 0)
+
+    animes_recomendados = recomendar.datos_animes(animes_id)   
+    cant_valorados = len(recomendar.items_valorados(username)) 
+    cant_vistos = len(recomendar.items_vistos(username)) 
     generos = recomendar.obtener_generos_unicos()
-    animes_vistos = set(map(int, recomendar.items_vistos(username)))
-    animes_valorados = set(map(int, recomendar.items_valorados(username)))
-    animes_totales = animes_vistos | animes_valorados
-    if genero:
-        anime_id = recomendar.buscar_ids_por_genero(genero, limit=200)
-    else:
-        anime_id = recomendar.recomendar(username)
-    animes_no_vistos = [aid for aid in anime_id if int(aid) not in animes_totales]
+    genero = request.args.get('genero', None)
 
-    if not animes_no_vistos:
-        print("⚠️ Todos los recomendados vistos. Buscando siguientes del top.")
-        animes_no_vistos = recomendar.top_animes(limit=500)
-        animes_no_vistos = [aid for aid in animes_no_vistos if int(aid) not in animes_totales]
-   
-    print(f"🎯 Total de animes recomendados por modelo: {len(anime_id)}")
-    print(f"👀 Ejemplo de IDs recomendados: {anime_id[:15]}")
-    print(f"🚫 IDs ya vistos/valorados ({len(animes_totales)}): {list(animes_totales)[:15]}")
-    animes_finales_ids = animes_no_vistos[:9]
-    animes_finales = recomendar.datos_animes(animes_finales_ids)
-
-    for aid in animes_finales_ids:
-        if aid not in animes_vistos:
-            recomendar.insertar_interacciones(aid, username, 0)
-
-    cant_valorados = len(recomendar.items_valorados(username))
-    cant_vistos = len(recomendar.items_vistos(username))
-
+    #Obtener ratings existentes del usuario para animes recomendados
+    conn = recomendar.get_db()
+    cursor = conn.cursor()
+    user_ratings = {}
+    if animes_id:
+        placeholders=','.join(['?'] * len(animes_id))
+        cursor.execute(f"""SELECT anime_id, score
+                        FROM interacciones
+                        WHERE username = ? AND anime_id IN ({placeholders})
+                        """, [username] + animes_id)
+        for row in cursor.fetchall(): 
+            score_value=row['score']
+            if score_value is not None:
+                user_ratings[row['anime_id']] = int(float(score_value))
+            else:
+                user_ratings[row['anime_id']] = 0
+    #conn.close()            
     # --- Render ---
     return render_template(
         "recomendaciones.html",
-        animes_recomendados=animes_finales,
+        animes_recomendados=animes_recomendados,
+        user_rating=user_ratings,
         username=username,
         cant_valorados=cant_valorados,
         cant_vistos=cant_vistos,
+        first_visit=first_visit,
         generos=generos,
-        genero_seleccionado=genero
+        genero_seleccionado=genero,
+        sistema_usado=sistema_usado
     )
 
 
 @app.get('/recomendaciones/<int:anime_id>')
 def get_recomendaciones_anime(anime_id):
     username = request.cookies.get('username')
-    
-    animes_vistos = set(map(int, recomendar.items_vistos(username)))
-    animes_valorados = set(map(int, recomendar.items_valorados(username)))
-    animes_totales = animes_vistos | animes_valorados
-    anime_ids_recomendados = recomendar.recomendar_contexto(username, anime_id)
-    animes_no_vistos = [aid for aid in anime_ids_recomendados if int(aid) not in animes_totales]
+    animes_id, sistema_usado = recomendar.recomendar_contexto(username, anime_id)
 
-    if not animes_no_vistos:
-        print(f"⚠️ Todos los similares a {anime_id} vistos. Mostrando otros del mismo género.")
-        genero_principal = recomendar.genero_principal(anime_id)  
-        animes_no_vistos = recomendar.buscar_ids_por_genero(genero_principal, limit=20)
-        animes_no_vistos = [aid for aid in animes_no_vistos if int(aid) not in animes_totales]
+    for anime_id in animes_id:
+        recomendar.insertar_interacciones(anime_id, username, 0)
 
-    animes_finales_ids = animes_no_vistos[:3]
-    animes_finales = recomendar.datos_animes(animes_finales_ids)
-
-    for aid in animes_finales_ids:
-        if aid not in animes_vistos:
-            recomendar.insertar_interacciones(aid, username, 0)
-
-    rec = recomendar.obtener_anime(anime_id)
-
-    cant_valorados = len(recomendar.items_valorados(username))
+    animes_finales = recomendar.datos_animes(animes_id)
+    cant_valorados = len(recomendar.items_valorados(username)) 
     cant_vistos = len(recomendar.items_vistos(username))
+    rec = recomendar.obtener_anime(anime_id)
 
     return render_template("recomendaciones_animes.html", rec=rec, animes_recomendados=animes_finales, username=username, cant_valorados=cant_valorados, cant_vistos=cant_vistos)
 
