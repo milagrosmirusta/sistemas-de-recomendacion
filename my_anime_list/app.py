@@ -53,8 +53,16 @@ def get_recomendaciones():
     username = request.cookies.get('username')
     #Verifico primera visita
     first_visit = is_first_visit(username)
-
+    genero_filtro = request.args.get('genero', None)
     animes_id, sistema_usado = recomendar.recomendar(username)
+
+    if genero_filtro and genero_filtro != "":
+        animes_id = recomendar.buscar_ids_por_genero(genero_filtro, limit=9)
+        sistema_usado = f"Filtrado por género: {genero_filtro}"
+    else:
+        # Sin filtro, usar recomendaciones personalizadas
+        animes_id, sistema_usado = recomendar.recomendar(username)
+
 
     for anime_id in animes_id:
         recomendar.insertar_interacciones(anime_id, username, 0)
