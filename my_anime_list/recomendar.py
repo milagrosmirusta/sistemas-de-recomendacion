@@ -116,9 +116,17 @@ def crear_usuario(username):
     return
 
 def insertar_interacciones(anime_id, username, score):
-    query = f"INSERT INTO interacciones(anime_id, username, score) VALUES (?, ?, ?) ON CONFLICT (anime_id, username) DO UPDATE SET score=?;" # si el rating existia lo actualizo
-    sql_execute(query, [anime_id, username, score, score])
+    if score == 0:
+        # Si score es 0 (marcar como visto), solo insertar si NO existe
+        # Esto evita sobrescribir valoraciones existentes
+        query = "INSERT INTO interacciones(anime_id, username, score) VALUES (?, ?, ?) ON CONFLICT (anime_id, username) DO NOTHING;"
+        sql_execute(query, [anime_id, username, score])
+    else:
+        # Si score > 0 (valoración real), insertar o actualizar siempre
+        query = "INSERT INTO interacciones(anime_id, username, score) VALUES (?, ?, ?) ON CONFLICT (anime_id, username) DO UPDATE SET score=?;"
+        sql_execute(query, [anime_id, username, score, score])
     return
+
 
 def reset_usuario(username):
     query = f"DELETE FROM interacciones WHERE username = ?;"
@@ -136,7 +144,7 @@ def items_valorados(username):
     return [i["anime_id"] for i in rows]
 
 def items_vistos(username):
-    query = f"SELECT anime_id FROM interacciones WHERE username = ? AND score = 0"
+    query = f"SELECT anime_id FROM interacciones WHERE username = ?"
     rows = sql_select(query, [username])
     return [i["anime_id"] for i in rows]
 
@@ -145,9 +153,9 @@ def items_desconocidos(username):
     query = """
         SELECT a.anime_id
         FROM animes a
-        LEFT JOIN interacciones i 
-          ON a.anime_id = i.anime_id AND i.username = ?
-        WHERE i.anime_id IS NULL;
+        WHERE a.anime_id NOT IN (
+            SELECT anime_id FROM interacciones WHERE username = ?
+        );
     """
     rows = sql_select(query, [username])
     return [i["anime_id"] for i in rows]
@@ -158,12 +166,15 @@ def datos_animes(anime_id):
     animes = sql_select(query, anime_id)
     return animes
 
-def filtrar_por_genero(anime_principal_id, lista_ids):
+def filtrar_por_genero(anime_principal_id, lista_ids, N=3):
     """Filtra los animes que compartan al menos un género con el anime principal."""
     # Obtener géneros del anime principal
     anime_principal = sql_select("SELECT genres FROM animes WHERE anime_id = ?;", [anime_principal_id])
-    if not anime_principal:
-        return lista_ids  # si no hay géneros, no filtro
+
+    if not anime_principal or not anime_principal[0]["genres"]:
+        # Si no existe el anime o no tiene géneros, devolver los primeros N de la lista
+        return lista_ids[:N] if lista_ids else []
+
     generos_principal = [g.strip() for g in anime_principal[0]["genres"].split(",")]
 
     if not lista_ids:
@@ -175,12 +186,19 @@ def filtrar_por_genero(anime_principal_id, lista_ids):
 
     filtrados = []
     for a in candidatos:
+        # Manejar casos donde genres puede ser None
+        if not a["genres"]:
+            continue
         generos = [g.strip() for g in a["genres"].split(",")]
         if any(g in generos for g in generos_principal) and a["anime_id"] != anime_principal_id:
             filtrados.append(a["anime_id"])
 
-    # Si hay pocos, los devuelvo todos, si no, muestro los primeros 3 al azar
-    return random.sample(filtrados, k=min(3, len(filtrados)))
+    # Si no hay filtrados, devolver lista vacía para que se complete después
+    if not filtrados:
+        return []
+
+    # Devolver hasta N animes al azar
+    return random.sample(filtrados, k=min(N, len(filtrados)))
 
 def calcular_similitud_items():
     """
@@ -281,10 +299,10 @@ def recomendador_top_n(username, animes_relevantes, animes_desconocidos, N=9):
     res = sql_select(f"""
         SELECT anime_id 
         FROM top_animes 
-        WHERE anime_id NOT IN ({",".join("?"*len(animes_relevantes))})
+        WHERE anime_id IN ({",".join("?"*len(animes_desconocidos))})
         ORDER BY score DESC 
         LIMIT ?;
-    """, animes_relevantes + [N])
+    """, animes_desconocidos + [N])
 
     id_animes = [i["anime_id"] for i in res]
     return id_animes
@@ -294,28 +312,38 @@ def recomendador_item_based(username, animes_relevantes, animes_desconocidos, N=
     if not animes_relevantes:
         # Si no tiene valoraciones, caer en top_n
         return recomendador_top_n(username, animes_relevantes, animes_desconocidos, N)
-    
-    placeholders = ",".join("?" * len(animes_relevantes))
-    
-    # Buscar animes similares a los que le gustaron
+
+    if not animes_desconocidos:
+        return []
+
+    placeholders_relevantes = ",".join("?" * len(animes_relevantes))
+
+    # Limitar animes_desconocidos si son demasiados (límite SQLite)
+    if len(animes_desconocidos) > 800:
+        animes_desconocidos = random.sample(animes_desconocidos, 800)
+
+    placeholders_desconocidos = ",".join("?" * len(animes_desconocidos))
+
+    # Buscar animes similares a los que le gustaron, pero solo entre los desconocidos
     query = f"""
-        SELECT 
-            CASE 
-                WHEN s.anime_id_1 IN ({placeholders}) THEN s.anime_id_2
+        SELECT
+            CASE
+                WHEN s.anime_id_1 IN ({placeholders_relevantes}) THEN s.anime_id_2
                 ELSE s.anime_id_1
             END AS anime_id,
             SUM(s.similitud) AS score_total
         FROM item_similitudes s
-        WHERE (s.anime_id_1 IN ({placeholders}) OR s.anime_id_2 IN ({placeholders}))
-          AND anime_id NOT IN ({placeholders})  -- excluir los que ya vio
+        WHERE (s.anime_id_1 IN ({placeholders_relevantes}) OR s.anime_id_2 IN ({placeholders_relevantes}))
+          AND anime_id NOT IN ({placeholders_relevantes})  -- excluir los valorados
+          AND anime_id IN ({placeholders_desconocidos})  -- solo recomendar desconocidos
         GROUP BY anime_id
         ORDER BY score_total DESC
         LIMIT ?;
     """
-    
-    params = animes_relevantes * 4 + [N]
+
+    params = animes_relevantes * 4 + animes_desconocidos + [N]
     res = sql_select(query, params)
-    
+
     return [r["anime_id"] for r in res]
 
 def recomendador_content_based(username, animes_relevantes, animes_desconocidos, N=9):
@@ -506,12 +534,14 @@ def recomendador_hibrido(username, animes_relevantes, animes_desconocidos, N=9):
         print(f"[Híbrido→Item80%+Content20%]", end=" | ")  # ✅ LOGGING
         n_item = int(N * 0.8)
         n_content = N - n_item 
-        item_recs = recomendador_item_based(username, animes_relevantes, animes_desconocidos, n_item * 2)
+        item_recs = recomendador_item_based(username, animes_relevantes, animes_desconocidos, n_item)
         content_recs = recomendador_content_based_avanzado(username, animes_relevantes, animes_desconocidos, n_content * 2)
         return mezclar_recomendaciones(item_recs, content_recs, N)
     else:
         print(f"[Híbrido→Item100%]", end=" | ")  # ✅ LOGGING
         return recomendador_item_based(username, animes_relevantes, animes_desconocidos, N)
+    
+
 def mezclar_tres_fuentes(lista1, lista2, lista3, N):
     """
     Mezcla tres listas intercalando, sin duplicados.
@@ -776,19 +806,19 @@ def recomendar_contexto(username, anime_id, animes_relevantes=None, animes_desco
 
     if not animes_desconocidos:
         animes_desconocidos = items_desconocidos(username)
-    
-    # Siempre uso content-based para contexto 
+
+    # Siempre uso content-based para contexto
     sistema_nombre = "Basado en Contenido (Contextual)"
 
     base_recs = recomendador_content_based_avanzado(username, animes_relevantes, animes_desconocidos, N * 5)
-    filtrados = filtrar_por_genero(anime_id, base_recs)
-    
+    filtrados = filtrar_por_genero(anime_id, base_recs, N)
+
     # Si el filtro deja pocos resultados, completar con el resto
     if len(filtrados) < N:
         faltan = [x for x in base_recs if x not in filtrados and x != anime_id]
         random.shuffle(faltan)
         filtrados += faltan[:N - len(filtrados)]
-    
+
     # ✅ Retornar ambos valores
     return filtrados[:N], sistema_nombre
 
