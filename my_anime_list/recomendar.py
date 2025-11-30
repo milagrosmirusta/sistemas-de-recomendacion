@@ -5,6 +5,7 @@ import sqlite3
 import os
 import random
 from flask import g
+import time
 
 import metricas
 
@@ -12,7 +13,7 @@ import metricas
 DATABASE_FILE = os.path.dirname(__file__) + "/datos/mal.db"
 
 ### --- RECOMENDADOR USADO --- ###
-RECOMENDADOR_ACTIVO = "two_tower"  # opciones: "azar", "top_n", "item_based", "two_tower", "content_based", "content_based_avanzado", "hibrido""
+RECOMENDADOR_ACTIVO = "hibrido"  # opciones: "azar", "top_n", "item_based", "two_tower", "content_based", "content_based_avanzado", "hibrido", "hibrido_con_tt"
 
 
 ## Conexión global
@@ -370,12 +371,13 @@ def recomendador_content_based(username, animes_relevantes, animes_desconocidos,
 def recomendador_content_based_avanzado(username, animes_relevantes, animes_desconocidos, N=9):
     """
     Content-based con múltiples features: géneros, studios, score range.
+    OPTIMIZADO: Una sola query masiva en lugar de miles.
     """
     if not animes_relevantes:
         return recomendador_top_n(username, animes_relevantes, animes_desconocidos, N)
     
-    # Analizar preferencias del usuario
-    query = f"""
+    # 1. Analizar preferencias del usuario
+    query = """
         SELECT a.genres, a.studios, a.score
         FROM animes a
         JOIN interacciones i ON a.anime_id = i.anime_id
@@ -414,17 +416,28 @@ def recomendador_content_based_avanzado(username, animes_relevantes, animes_desc
     
     # Score range preferido
     avg_score = sum(scores) / len(scores) if scores else 7.0
-    min_score = max(avg_score - 1.5, 0)
     
-    # Calcular similarity score para cada anime candidato
+    # ✅ OPTIMIZACIÓN: Limitar candidatos para evitar overflow de SQLite
+    # SQLite tiene límite de ~999 parámetros en una query
+    if len(animes_desconocidos) > 800:
+        animes_desconocidos = random.sample(animes_desconocidos, 800)
+    
+    if not animes_desconocidos:
+        return []
+    
+    # ✅ OPTIMIZACIÓN: UNA query masiva en lugar de miles
+    placeholders = ",".join("?" * len(animes_desconocidos))
+    query = f"""
+        SELECT anime_id, genres, studios, score
+        FROM animes
+        WHERE anime_id IN ({placeholders})
+    """
+    candidates = sql_select(query, animes_desconocidos)
+    
+    # 2. Calcular similarity para cada candidato (en memoria, súper rápido)
     candidate_scores = []
     
-    for anime_id in animes_desconocidos:
-        anime = sql_select("SELECT genres, studios, score FROM animes WHERE anime_id = ?", [anime_id])
-        if not anime:
-            continue
-        
-        anime = anime[0]
+    for anime in candidates:
         similarity = 0
         
         # Score por géneros (peso: 3)
@@ -446,12 +459,11 @@ def recomendador_content_based_avanzado(username, animes_relevantes, animes_desc
             similarity += 1
         
         if similarity > 0:
-            candidate_scores.append((anime_id, similarity))
+            candidate_scores.append((anime['anime_id'], similarity))
     
     # Ordenar por similarity y tomar top N
     candidate_scores.sort(key=lambda x: x[1], reverse=True)
     return [anime_id for anime_id, _ in candidate_scores[:N]]
-
 def mezclar_recomendaciones(lista1, lista2, N):
     """
     Mezcla dos listas de recomendaciones intercalando, sin duplicados.
@@ -480,21 +492,96 @@ def mezclar_recomendaciones(lista1, lista2, N):
     return resultado[:N]
 def recomendador_hibrido(username, animes_relevantes, animes_desconocidos, N=9):
     """
-    Recomendador híbrido: mezcla Top-N (popularidad) con Item-Based.
+    Estrategia óptima para producción:
+    - Cold start (<10): Top-N
+    - Establecidos (10-50): 80% Item-Based + 20% Content-Avanzado
+    - Otakus (+50): 100% Item-based
     """
     num_ratings = len(animes_relevantes)
         
     if num_ratings < 10:
+        print(f"[Híbrido→TopN]", end=" | ")  # ✅ LOGGING
         return recomendador_top_n(username, animes_relevantes, animes_desconocidos, N)
+    elif num_ratings < 50:
+        print(f"[Híbrido→Item80%+Content20%]", end=" | ")  # ✅ LOGGING
+        n_item = int(N * 0.8)
+        n_content = N - n_item 
+        item_recs = recomendador_item_based(username, animes_relevantes, animes_desconocidos, n_item * 2)
+        content_recs = recomendador_content_based_avanzado(username, animes_relevantes, animes_desconocidos, n_content * 2)
+        return mezclar_recomendaciones(item_recs, content_recs, N)
+    else:
+        print(f"[Híbrido→Item100%]", end=" | ")  # ✅ LOGGING
+        return recomendador_item_based(username, animes_relevantes, animes_desconocidos, N)
+def mezclar_tres_fuentes(lista1, lista2, lista3, N):
+    """
+    Mezcla tres listas intercalando, sin duplicados.
+    Prioriza lista1 > lista2 > lista3.
+    """
+    resultado = []
+    i, j, k = 0, 0, 0
+    
+    while len(resultado) < N:
+        # Rotar entre las tres listas
+        if i < len(lista1) and lista1[i] not in resultado:
+            resultado.append(lista1[i])
+        i += 1
         
-    n_item = int(N * 0.8)
-    n_content = N - n_item
+        if len(resultado) < N and j < len(lista2) and lista2[j] not in resultado:
+            resultado.append(lista2[j])
+        j += 1
         
-    item_recs = recomendador_item_based(username, animes_relevantes, animes_desconocidos, n_item * 2)
-    content_recs = recomendador_content_based_avanzado(username, animes_relevantes, animes_desconocidos, n_content * 2)
+        if len(resultado) < N and k < len(lista3) and lista3[k] not in resultado:
+            resultado.append(lista3[k])
+        k += 1
         
-    return mezclar_recomendaciones(item_recs, content_recs, N)
+        # Break si se acabaron todas las listas
+        if i >= len(lista1) and j >= len(lista2) and k >= len(lista3):
+            break
+    
+    return resultado[:N]
 
+def recomendador_hibrido_con_tt(username, animes_relevantes, animes_desconocidos, N=9):
+    """
+    Estrategia híbrida que usa Two-Tower solo cuando realmente funciona mejor:
+    
+    - Cold start (<10):         100% Top-N
+    - Usuarios medios (10-200): 80% Item-Based + 20% Content
+    - Power users (200+):       50% Two-Tower + 30% Item-Based + 20% Content
+
+    """
+    num_ratings = len(animes_relevantes)
+    
+    if num_ratings < 10:
+        print(f"[Híbrido→TopN]", end=" ")
+        return recomendador_top_n(username, animes_relevantes, animes_desconocidos, N)
+    
+    elif num_ratings < 200:
+        print(f"[Híbrido→Item80%+Content20%]", end=" ")
+        n_item = int(N * 0.8)
+        n_content = N - n_item
+        
+        item_recs = recomendador_item_based(username, animes_relevantes, animes_desconocidos, n_item * 2)
+        content_recs = recomendador_content_based_avanzado(username, animes_relevantes, animes_desconocidos, n_content * 2)
+        
+        return mezclar_recomendaciones(item_recs, content_recs, N)
+    
+    else:
+        print(f"[Híbrido→TwoTower50%+Item30%+Content20%]", end=" ")
+        n_dl = int(N * 0.5)
+        n_item = int(N * 0.3)
+        n_content = N - n_dl - n_item
+        
+        try:
+            dl_recs = recomendador_two_tower(username, animes_relevantes, animes_desconocidos, n_dl * 2)
+        except:
+            print(f"[TwoTower-FAIL→Item]", end=" ")
+            dl_recs = []
+        
+        item_recs = recomendador_item_based(username, animes_relevantes, animes_desconocidos, n_item * 2)
+        content_recs = recomendador_content_based_avanzado(username, animes_relevantes, animes_desconocidos, n_content * 2)
+        
+        return mezclar_tres_fuentes(dl_recs, item_recs, content_recs, N)
+        
 
 def recomendador_two_tower(username, animes_relevantes, animes_desconocidos, N=9):
     """
@@ -644,6 +731,8 @@ def recomendar(username, animes_relevantes=None, animes_desconocidos=None, N=500
         return recomendador_content_based_avanzado(username, animes_relevantes, animes_desconocidos, N)
     elif RECOMENDADOR_ACTIVO == "hibrido":
         return recomendador_hibrido(username, animes_relevantes, animes_desconocidos, N)
+    elif RECOMENDADOR_ACTIVO == "hibrido_con_tt":
+        return recomendador_hibrido_con_tt(username, animes_relevantes, animes_desconocidos, N)
     else:
         raise ValueError(f"Recomendador '{RECOMENDADOR_ACTIVO}' no reconocido")
 
@@ -711,11 +800,18 @@ def obtener_generos_unicos():
 ###
 
 def test(username):
+    """
+    Evalúa el recomendador para un usuario específico.
+    Retorna (ndcg_score, tiempo_recomendacion, metadatos)
+    """
+    start_time = time.time()
+    
     animes_relevantes = items_valorados(username)
     animes_desconocidos = items_vistos(username) + items_desconocidos(username)
 
     # 🔍 DEBUG: Ver información del usuario
-    print(f"[DEBUG] {username}: {len(animes_relevantes)} valorados, {len(animes_desconocidos)} desconocidos", end=" ")
+    num_ratings = len(animes_relevantes)
+    print(f"[{username}] {num_ratings} ratings, {len(animes_desconocidos)} desconocidos", end=" | ")
 
     random.shuffle(animes_relevantes)
 
@@ -723,10 +819,13 @@ def test(username):
     animes_relevantes_training = animes_relevantes[:corte]
     animes_relevantes_testing = animes_relevantes[corte:] + animes_desconocidos
 
+    # ⏱️ TIMING: Medir tiempo de recomendación
+    rec_start = time.time()
     recomendacion = recomendar(username, animes_relevantes_training, animes_relevantes_testing, 20)
+    rec_time = time.time() - rec_start
 
     # 🔍 DEBUG: Ver cuántas recomendaciones se generaron
-    print(f"| recomendaciones: {len(recomendacion)}", end=" ")
+    print(f"Recs: {len(recomendacion)}", end=" | ")
 
     relevance_scores = []
     for id in recomendacion:
@@ -734,7 +833,6 @@ def test(username):
         if res is not None and len(res) > 0:
             rating = res[0][0]
         else:
-            
             rating = 0
 
         relevance_scores.append(rating)
@@ -743,13 +841,29 @@ def test(username):
     
     # 🔍 DEBUG: Ver distribución de ratings en las recomendaciones
     num_relevant = sum(1 for r in relevance_scores if r > 0)
-    print(f"| relevantes: {num_relevant}/20", end=" ")
+    avg_relevant_score = sum(r for r in relevance_scores if r > 0) / num_relevant if num_relevant > 0 else 0
     
-    return score
+    total_time = time.time() - start_time
+    
+    print(f"Relevantes: {num_relevant}/20 (avg: {avg_relevant_score:.1f}) | Tiempo: {rec_time*1000:.1f}ms | NDCG: {score:.4f}")
+    
+    # Retornar métricas completas
+    return {
+        'ndcg': score,
+        'rec_time': rec_time,
+        'total_time': total_time,
+        'num_ratings': num_ratings,
+        'num_relevant': num_relevant,
+        'avg_relevant_score': avg_relevant_score
+    }
+
 
 if __name__ == '__main__':
     # 🔧 Modo testing: usar conexión directa sin Flask
-    print("🧪 Modo testing activado\n")
+    print("=" * 80)
+    print(f"🧪 EVALUACIÓN DE RECOMENDADOR: {RECOMENDADOR_ACTIVO}")
+    print("=" * 80)
+    print()
     
     # Inicializar conexión para testing
     init_testing_db()
@@ -758,9 +872,15 @@ if __name__ == '__main__':
     init()
     calcular_similitud_items()
     
-    # Ejecutar tests
+    # Parámetros de evaluación
     number = 100
-    interacciones = 10
+    interacciones = 5
+    
+    print(f"📊 Configuración: {number} usuarios con mínimo {interacciones} interacciones")
+    print(f"🎯 Recomendador activo: {RECOMENDADOR_ACTIVO}")
+    print()
+    
+    # Ejecutar tests
     user_animes = sql_select(f"""
         SELECT username 
         FROM usuarios 
@@ -769,23 +889,108 @@ if __name__ == '__main__':
     """)
     user_animes = [i["username"] for i in user_animes]
 
-    scores = []
-    for user in user_animes:
-        score = test(user)
-        scores.append(score)
-        print(f"{user} >> {score:.6f}")
-
-    ndcg_mean = sum(scores)/len(scores)
-    print(f"\nNDCG: {ndcg_mean:.6f} --> {RECOMENDADOR_ACTIVO} - {number} users +{interacciones} interacciones")
-
-    # 💾 Guardar resultado
+    # Métricas agregadas
+    results = []
+    ndcg_scores = []
+    rec_times = []
+    
+    # Categorías por número de interacciones
+    categories = {
+        'cold_start': {'range': (0, 10), 'ndcgs': [], 'times': []},
+        'new_user': {'range': (10, 50), 'ndcgs': [], 'times': []},
+        'regular': {'range': (50, 200), 'ndcgs': [], 'times': []},
+        'power_user': {'range': (200, float('inf')), 'ndcgs': [], 'times': []}
+    }
+    
+    print("-" * 80)
+    eval_start = time.time()
+    
+    for i, user in enumerate(user_animes, 1):
+        result = test(user)
+        results.append(result)
+        ndcg_scores.append(result['ndcg'])
+        rec_times.append(result['rec_time'])
+        
+        # Categorizar usuario
+        num_ratings = result['num_ratings']
+        for cat_name, cat_data in categories.items():
+            if cat_data['range'][0] <= num_ratings < cat_data['range'][1]:
+                cat_data['ndcgs'].append(result['ndcg'])
+                cat_data['times'].append(result['rec_time'])
+                break
+        
+        # Progress indicator cada 10 usuarios
+        if i % 10 == 0:
+            print(f"   ... {i}/{number} usuarios evaluados")
+    
+    total_eval_time = time.time() - eval_start
+    
+    print("-" * 80)
+    print()
+    
+    # 📊 RESUMEN DE RESULTADOS
+    print("=" * 80)
+    print("📊 RESULTADOS FINALES")
+    print("=" * 80)
+    print()
+    
+    # Métricas generales
+    ndcg_mean = sum(ndcg_scores) / len(ndcg_scores)
+    ndcg_std = (sum((x - ndcg_mean) ** 2 for x in ndcg_scores) / len(ndcg_scores)) ** 0.5
+    
+    avg_rec_time = sum(rec_times) / len(rec_times)
+    max_rec_time = max(rec_times)
+    min_rec_time = min(rec_times)
+    
+    print(f"🎯 NDCG Global:")
+    print(f"   Media:  {ndcg_mean:.6f}")
+    print(f"   Std:    {ndcg_std:.6f}")
+    print(f"   Min:    {min(ndcg_scores):.6f}")
+    print(f"   Max:    {max(ndcg_scores):.6f}")
+    print()
+    
+    print(f"⏱️  Tiempos de Recomendación:")
+    print(f"   Promedio:  {avg_rec_time*1000:.2f} ms")
+    print(f"   Mínimo:    {min_rec_time*1000:.2f} ms")
+    print(f"   Máximo:    {max_rec_time*1000:.2f} ms")
+    print(f"   Total:     {total_eval_time:.2f} s")
+    print()
+    
+    # Métricas por categoría
+    print(f"📈 Resultados por Categoría de Usuario:")
+    print()
+    
+    for cat_name, cat_data in categories.items():
+        if cat_data['ndcgs']:
+            cat_ndcg = sum(cat_data['ndcgs']) / len(cat_data['ndcgs'])
+            cat_time = sum(cat_data['times']) / len(cat_data['times'])
+            min_int, max_int = cat_data['range']
+            max_display = f"{max_int}" if max_int != float('inf') else "∞"
+            
+            print(f"   {cat_name.replace('_', ' ').title():15} ({min_int:3}-{max_display:>3} ratings):")
+            print(f"      Usuarios: {len(cat_data['ndcgs']):3}  |  NDCG: {cat_ndcg:.4f}  |  Tiempo: {cat_time*1000:6.2f} ms")
+    
+    print()
+    print("=" * 80)
+    
+    # 💾 Guardar resultado detallado
     from datetime import datetime
     ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     READ_FILE = os.path.join(ROOT_DIR, "resultados.txt")
+    
     with open(READ_FILE, "a", encoding="utf-8") as f:
-        f.write(f"\n{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {RECOMENDADOR_ACTIVO} - NDCG: {ndcg_mean:.6f} - {number} users +{interacciones} interacciones")
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        f.write(f"\n{timestamp} - {RECOMENDADOR_ACTIVO} - NDCG: {ndcg_mean:.6f} ± {ndcg_std:.6f} - Tiempo: {avg_rec_time*1000:.2f}ms - {number} users +{interacciones} interacciones")
+        
+        # Agregar desglose por categoría
+        for cat_name, cat_data in categories.items():
+            if cat_data['ndcgs']:
+                cat_ndcg = sum(cat_data['ndcgs']) / len(cat_data['ndcgs'])
+                cat_time = sum(cat_data['times']) / len(cat_data['times'])
+                f.write(f"\n   - {cat_name}: NDCG {cat_ndcg:.4f}, Tiempo {cat_time*1000:.2f}ms, N={len(cat_data['ndcgs'])}")
 
-    print("✅ Resultados guardados en resultados.txt")
+    print(f"✅ Resultados guardados en resultados.txt")
+    print()
     
     # Cerrar conexión de testing
     close_testing_db()
