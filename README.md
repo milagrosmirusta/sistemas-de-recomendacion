@@ -706,7 +706,7 @@ RECOMENDADOR_ACTIVO = "hibrido_con_tt"  # Añade deep learning para 200+
 
 ### ¿Cómo entreno el modelo Two-Tower?
 
-Si quieres usar deep learning:
+Si queres usar deep learning:
 
 ```bash
 cd models/
