@@ -1,8 +1,8 @@
-# 🎌 Sistema de Recomendación de Anime
+# Sistema de Recomendación de Anime
 
 Sistema de recomendación de anime basado en datos scrapeados de MyAnimeList (MAL), implementando múltiples estrategias desde filtrado colaborativo item-based hasta redes neuronales Two-Tower, con un sistema híbrido adaptativo que evoluciona según la experiencia del usuario.
 
-## 🎯 Características Principales
+## Características Principales
 
 - **Estrategias de Recomendación**: Desde popularidad hasta deep learning
 - **Sistema Híbrido Adaptativo**: Evoluciona según el número de valoraciones del usuario
@@ -14,7 +14,7 @@ Sistema de recomendación de anime basado en datos scrapeados de MyAnimeList (MA
 
 ---
 
-## 📊 Datos del Proyecto
+## Datos del Proyecto
 
 ### Fuentes de Datos (Scrapeadas de MAL)
 
@@ -26,7 +26,7 @@ Sistema de recomendación de anime basado en datos scrapeados de MyAnimeList (MA
 
 ---
 
-## 🏗️ Arquitectura del Sistema
+## Arquitectura del Sistema
 
 ### Estrategias de Recomendación Implementadas
 
@@ -51,7 +51,7 @@ RECOMENDADOR_ACTIVO = "top_n"
 
 ---
 
-#### 2. **Filtrado Colaborativo Item-Based** ⭐
+#### 2. **Filtrado Colaborativo Item-Based** 
 ```python
 RECOMENDADOR_ACTIVO = "item_based"
 ```
@@ -197,19 +197,6 @@ def recomendador_content_based_avanzado(username, animes_relevantes, animes_desc
     # 4. Ordenar por similarity
     candidate_scores.sort(key=lambda x: x[1], reverse=True)
     return candidate_scores[:N]
-```
-
-**Optimización clave**:
-
-```
-❌ ANTES (N queries):
-for anime_id in animes_desconocidos:  # 5000 animes
-    query = "SELECT * FROM animes WHERE anime_id = ?"
-    # → 5000 queries → ~2000ms
-
-✅ AHORA (1 query + scoring en Python):
-query = "SELECT * FROM animes WHERE anime_id IN (?, ?, ...)"
-# → 1 query (~50ms) + scoring en memoria (~10ms) = 60ms
 ```
 
 **Ventajas**:
@@ -433,7 +420,7 @@ Two-Tower aprende patrones complejos que solo se manifiestan con MUCHOS datos:
 
 ---
 
-## 📁 Estructura del Proyecto
+## Estructura del Proyecto
 
 ```
 my_anime_list/
@@ -548,7 +535,7 @@ Elimina todas tus valoraciones (vuelve a 0).
 
 ---
 
-## 🧪 Testing y Evaluación
+## Testing y Evaluación
 
 ### Ejecutar Evaluación
 
@@ -578,7 +565,7 @@ interacciones = 5    # Mínimo de interacciones
 
 ```bash
 ================================================================================
-🧪 EVALUACIÓN DE RECOMENDADOR: hibrido
+ EVALUACIÓN DE RECOMENDADOR: hibrido
 ================================================================================
 
 📊 Configuración: 500 usuarios con mínimo 5 interacciones
@@ -616,7 +603,7 @@ def normalized_discounted_cumulative_gain(relevance_scores):
 
 ---
 
-## ⚙️ Configuración Avanzada
+## Configuración Avanzada
 
 ### Cambiar Estrategia por Defecto
 
@@ -630,7 +617,7 @@ RECOMENDADOR_ACTIVO = "hibrido"
 "item_based"                    # Colaborativo item-based
 "content_based"                 # Content simple (géneros)
 "content_based_avanzado"        # Content multi-feature
-"hibrido"                       # Adaptativo (RECOMENDADO) ⭐
+"hibrido"                       # Adaptativo (RECOMENDADO) 
 "hibrido_con_tt"                # Con Two-Tower para power users
 "two_tower"                     # Solo deep learning
 ```
@@ -667,7 +654,7 @@ HAVING COUNT(*) >= 100  # ← Cambiar threshold
 
 ---
 
-## 🔧 Detalles Técnicos
+## Detalles Técnicos
 
 
 ### Gestión de Conexiones
@@ -697,26 +684,7 @@ def teardown_db(exception):
 
 ---
 
-## 🌐 Deploy en PythonAnywhere
-
-### Archivos a Subir
-
-```
-/home/tu_usuario/anime-recommender/
-├── app.py
-├── recomendar.py
-├── estadisticas.py
-├── metricas.py
-├── templates/
-├── static/
-└── datos/
-    ├── mal.db
-    └── mal_original.db
-```
-
----
-
-## 📝 Licencia y Autoría
+## Licencia y Autoría
 
 **Proyecto académico** - Universidad de Buenos Aires
 - **Curso**: Sistemas de Recomendación
@@ -758,4 +726,5 @@ Esto genera:
 Este es un proyecto académico, pero sugerencias y feedback son bienvenidos:
 - Abrir un **Issue** para bugs o preguntas
 - Enviar **Pull Request** con mejoras
+
 💚
