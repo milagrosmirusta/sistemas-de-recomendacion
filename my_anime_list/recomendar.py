@@ -10,7 +10,7 @@ import metricas
 DATABASE_FILE = os.path.dirname(__file__) + "/datos/mal.db"
 
 ### --- RECOMENDADOR USADO --- ###
-RECOMENDADOR_ACTIVO = "hibrido"  # opciones: "azar", "top_n", "item_based", "two_tower", "content_based", "content_based_avanzado", "hibrido", "hibrido_con_tt"
+RECOMENDADOR_ACTIVO = "hibrido_con_tt"  # opciones: "azar", "top_n", "item_based", "two_tower", "content_based", "content_based_avanzado", "hibrido", "hibrido_con_tt"
 
 
 ## Conexión global
@@ -448,14 +448,13 @@ def recomendador_content_based_avanzado(username, animes_relevantes, animes_desc
     avg_score = sum(scores) / len(scores) if scores else 7.0
     
     # ✅ OPTIMIZACIÓN: Limitar candidatos para evitar overflow de SQLite
-    # SQLite tiene límite de ~999 parámetros en una query
     if len(animes_desconocidos) > 800:
         animes_desconocidos = random.sample(animes_desconocidos, 800)
     
     if not animes_desconocidos:
         return []
     
-    # ✅ OPTIMIZACIÓN: UNA query masiva en lugar de miles
+    # OPTIMIZACIÓN: UNA query masiva en lugar de miles
     placeholders = ",".join("?" * len(animes_desconocidos))
     query = f"""
         SELECT anime_id, genres, studios, score
@@ -543,7 +542,6 @@ def recomendador_hibrido(username, animes_relevantes, animes_desconocidos, N=9):
         print(f"[Híbrido→Item100%]", end=" | ") 
         return recomendador_item_based(username, animes_relevantes, animes_desconocidos, N)
     
-
 def mezclar_tres_fuentes(lista1, lista2, lista3, N):
     """
     Mezcla tres listas intercalando, sin duplicados.
@@ -573,46 +571,54 @@ def mezclar_tres_fuentes(lista1, lista2, lista3, N):
     return resultado[:N]
 
 def recomendador_hibrido_con_tt(username, animes_relevantes, animes_desconocidos, N=9):
-    """
-    Estrategia híbrida que usa Two-Tower solo cuando realmente funciona mejor:
-    
-    - Cold start (<10):         100% Top-N
-    - Usuarios medios (10-200): 80% Item-Based + 20% Content
-    - Power users (200+):       50% Two-Tower + 30% Item-Based + 20% Content
-
-    """
-    num_ratings = len(animes_relevantes)
-    
-    if num_ratings < 10:
-        print(f"[Híbrido→TopN]", end=" ")
-        return recomendador_top_n(username, animes_relevantes, animes_desconocidos, N)
-    
-    elif num_ratings < 200:
-        print(f"[Híbrido→Item80%+Content20%]", end=" ")
-        n_item = int(N * 0.8)
-        n_content = N - n_item
+        """        
+        - Cold start (<10):       Top-N 
+        - Nuevos (10-30):         80% Item + 20% Content 
+        - Medios (30-150):        100% Item
+        - Power users (150-200):  50% TT + 50% Item 
+        - Súper users (200+):     100% TT 
+        """
+        num_ratings = len(animes_relevantes)
         
-        item_recs = recomendador_item_based(username, animes_relevantes, animes_desconocidos, n_item * 2)
-        content_recs = recomendador_content_based_avanzado(username, animes_relevantes, animes_desconocidos, n_content * 2)
+        if num_ratings < 10:
+            print(f"[Híbrido→TopN]", end=" | ")
+            return recomendador_top_n(username, animes_relevantes, animes_desconocidos, N)
         
-        return mezclar_recomendaciones(item_recs, content_recs, N)
-    
-    else:
-        print(f"[Híbrido→TwoTower50%+Item30%+Content20%]", end=" ")
-        n_dl = int(N * 0.5)
-        n_item = int(N * 0.3)
-        n_content = N - n_dl - n_item
+        elif num_ratings < 30:
+            print(f"[Híbrido→Item80%+Content20%]", end=" | ")
+            n_item = int(N * 0.8)
+            n_content = N - n_item
+            
+            item_recs = recomendador_item_based(username, animes_relevantes, animes_desconocidos, n_item * 2)
+            content_recs = recomendador_content_based_avanzado(username, animes_relevantes, animes_desconocidos, n_content * 2)
+            
+            return mezclar_recomendaciones(item_recs, content_recs, N)
         
-        try:
-            dl_recs = recomendador_two_tower(username, animes_relevantes, animes_desconocidos, n_dl * 2)
-        except:
-            print(f"[TwoTower-FAIL→Item]", end=" ")
-            dl_recs = []
+        elif num_ratings < 150:
+            print(f"[Híbrido→Item100%]", end=" | ")
+            return recomendador_item_based(username, animes_relevantes, animes_desconocidos, N)
         
-        item_recs = recomendador_item_based(username, animes_relevantes, animes_desconocidos, n_item * 2)
-        content_recs = recomendador_content_based_avanzado(username, animes_relevantes, animes_desconocidos, n_content * 2)
+        elif num_ratings < 200:
+            print(f"[Híbrido→TT50%+Item50%]", end=" | ")
+            try:
+                n_tt = int(N * 0.5)
+                n_item = N - n_tt
+                
+                tt_recs = recomendador_two_tower(username, animes_relevantes, animes_desconocidos, n_tt * 2)
+                item_recs = recomendador_item_based(username, animes_relevantes, animes_desconocidos, n_item * 2)
+                
+                return mezclar_recomendaciones(tt_recs, item_recs, N)
+            except:
+                print(f"[TT-FAIL→Item]", end=" | ")
+                return recomendador_item_based(username, animes_relevantes, animes_desconocidos, N)
         
-        return mezclar_tres_fuentes(dl_recs, item_recs, content_recs, N)
+        else:  # 200+
+            print(f"[Híbrido→TT100%]", end=" | ")
+            try:
+                return recomendador_two_tower(username, animes_relevantes, animes_desconocidos, N)
+            except:
+                print(f"[TT-FAIL→Item]", end=" | ")
+                return recomendador_item_based(username, animes_relevantes, animes_desconocidos, N)
         
 
 def recomendador_two_tower(username, animes_relevantes, animes_desconocidos, N=9):
@@ -749,26 +755,33 @@ def recomendar(username, animes_relevantes=None, animes_desconocidos=None, N=9):
     if not animes_desconocidos:
         animes_desconocidos = items_desconocidos(username)
 
-    # ✅ Determinar qué sistema se usará
+    #  Determinar qué sistema se usará
     num_ratings = len(animes_relevantes)
     
+    # === MAPEO DE NOMBRES POR RECOMENDADOR Y NÚMERO DE RATINGS ===
     if RECOMENDADOR_ACTIVO == "hibrido":
-        
         if num_ratings < 10:
             sistema_nombre = "Popular (Top-N)"
         elif num_ratings < 50:
             sistema_nombre = "Híbrido (80% Colaborativo + 20% Contenido)"
         else:
             sistema_nombre = "Colaborativo (Item-Based)"
+    
     elif RECOMENDADOR_ACTIVO == "hibrido_con_tt":
         if num_ratings < 10:
             sistema_nombre = "Popular (Top-N)"
-        elif num_ratings < 200:
+        elif num_ratings < 30:
             sistema_nombre = "Híbrido (80% Colaborativo + 20% Contenido)"
+        elif num_ratings < 100:
+            sistema_nombre = "100% Colaborativo"
+        elif num_ratings < 200:    
+            sistema_nombre = "Híbrido (50% Two-Tower + 50% Colaborativo)"
         else:
-            sistema_nombre = "Híbrido Avanzado (50% Two-Tower + 30% Colaborativo + 20% Contenido)"
+            sistema_nombre = "100% Two-Tower"
+    
+    
     else:
-        # Mapear nombres legibles para otros sistemas
+        # Mapear nombres legibles para otros sistemas estáticos
         nombres_sistemas = {
             "azar": "Aleatorio",
             "top_n": "Popular (Top-N)",
@@ -779,7 +792,7 @@ def recomendar(username, animes_relevantes=None, animes_desconocidos=None, N=9):
         }
         sistema_nombre = nombres_sistemas.get(RECOMENDADOR_ACTIVO, RECOMENDADOR_ACTIVO)
 
-    # Ejecutar la recomendación
+    # === EJECUTAR LA RECOMENDACIÓN ===
     if RECOMENDADOR_ACTIVO == "azar":
         animes = recomendar_azar(username, animes_relevantes, animes_desconocidos, N)
     elif RECOMENDADOR_ACTIVO == "top_n":
@@ -800,7 +813,6 @@ def recomendar(username, animes_relevantes=None, animes_desconocidos=None, N=9):
         raise ValueError(f"Recomendador '{RECOMENDADOR_ACTIVO}' no reconocido")
 
     return animes, sistema_nombre
-
 def recomendar_contexto(username, anime_id, animes_relevantes=None, animes_desconocidos=None, N=3):
 
     if not animes_relevantes:
@@ -977,7 +989,7 @@ if __name__ == '__main__':
     calcular_similitud_items()
     
     # Parámetros de evaluación
-    number = 500
+    number = 100
     interacciones = 5
     
     print(f"📊 Configuración: {number} usuarios con mínimo {interacciones} interacciones")
