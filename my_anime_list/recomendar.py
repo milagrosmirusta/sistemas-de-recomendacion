@@ -4,7 +4,7 @@ import os
 import random
 from flask import g
 import time
-
+import shutil
 import metricas
 
 DATABASE_FILE = os.path.dirname(__file__) + "/datos/mal.db"
@@ -39,6 +39,17 @@ def get_db():
         db.row_factory = sqlite3.Row
         return db
 
+
+def crear_backup_db():
+    """Crea una copia del .db original"""
+    original = DATABASE_FILE
+    backup = DATABASE_FILE.replace('.db', '_original.db')
+    
+    if not os.path.exists(backup):
+        shutil.copy2(original, backup)
+        print(f"Backup creado: {backup}")
+    else:
+        print(f"Backup ya existe: {backup}")
 
 # def close_db(e=None):
 #     """Cierra la conexión si existe al final del request."""
@@ -841,6 +852,55 @@ def obtener_generos_unicos():
 
 ###
 
+def factory_reset():
+    print("🔄 Iniciando reset de fábrica...")
+    # Cerrar todas las conexiones
+    global _testing_db
+    if _testing_db is not None:
+        _testing_db.close()
+        _testing_db = None
+    
+    # Cerrar conexión de Flask si existe
+    try:
+        db = g.pop('db', None)
+        if db is not None:
+            db.close()
+    except RuntimeError:
+        pass
+    
+    # Rutas de archivos
+    original = DATABASE_FILE
+    backup = DATABASE_FILE.replace('.db', '_original.db')
+    
+    # Verificar que exista el backup
+    if not os.path.exists(backup):
+        print("❌ No existe backup original. Ejecuta crear_backup_db() primero.")
+        return False
+    
+    try:
+        # Restaurar desde backup
+        shutil.copy2(backup, original)
+        print("✅ Base de datos restaurada al estado original")
+        
+        # Reconectar
+        conn = get_db()
+        
+        # Verificar restauración
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) as count FROM interacciones")
+        count = cursor.fetchone()['count']
+        print(f"   Total de interacciones restauradas: {count}")
+        
+        cursor.execute("SELECT COUNT(*) as count FROM usuarios")
+        users_count = cursor.fetchone()['count']
+        print(f"   Total de usuarios restaurados: {users_count}")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error durante el reset: {e}")
+        return False
+
 def test(username):
     """
     Evalúa el recomendador para un usuario específico.
@@ -863,14 +923,14 @@ def test(username):
 
     # ⏱️ TIMING: Medir tiempo de recomendación
     rec_start = time.time()
-    recomendacion = recomendar(username, animes_relevantes_training, animes_relevantes_testing, 20)
+    recomendacion, sistema_nombre = recomendar(username, animes_relevantes_training, animes_relevantes_testing, 20)
     rec_time = time.time() - rec_start
 
-    # 🔍 DEBUG: Ver cuántas recomendaciones se generaron
+    
     print(f"Recs: {len(recomendacion)}", end=" | ")
 
     relevance_scores = []
-    for id in recomendacion:
+    for id in recomendacion:  
         res = sql_select("SELECT score FROM interacciones WHERE username = ? AND anime_id = ?;", [username, id])
         if res is not None and len(res) > 0:
             rating = res[0][0]
@@ -878,10 +938,12 @@ def test(username):
             rating = 0
 
         relevance_scores.append(rating)
+
+
     
     score = metricas.normalized_discounted_cumulative_gain(relevance_scores)
     
-    # 🔍 DEBUG: Ver distribución de ratings en las recomendaciones
+    # DEBUG: Ver distribución de ratings en las recomendaciones
     num_relevant = sum(1 for r in relevance_scores if r > 0)
     avg_relevant_score = sum(r for r in relevance_scores if r > 0) / num_relevant if num_relevant > 0 else 0
     
@@ -915,8 +977,8 @@ if __name__ == '__main__':
     calcular_similitud_items()
     
     # Parámetros de evaluación
-    number = 100
-    interacciones = 300
+    number = 500
+    interacciones = 5
     
     print(f"📊 Configuración: {number} usuarios con mínimo {interacciones} interacciones")
     print(f"🎯 Recomendador activo: {RECOMENDADOR_ACTIVO}")

@@ -1,10 +1,12 @@
 from flask import Flask, request, render_template, make_response, redirect, g
 import recomendar
+import estadisticas
 
 app = Flask(__name__)
 app.debug = True
 
 with app.app_context():
+    recomendar.crear_backup_db()
     recomendar.init()
     recomendar.calcular_similitud_items()  # Esto se ejecuta UNA sola vez
 
@@ -104,6 +106,51 @@ def get_recomendaciones():
         sistema_usado=sistema_usado
     )
 
+
+@app.get('/admin/factory_reset')
+def get_admin_reset():
+    return render_template('admin_reset.html')
+
+@app.post('/admin/factory_reset')
+def admin_factory_reset():
+    password = request.form.get('password', '')
+    
+    # Cambia esta contraseña por la que quieras
+    if password != "123456":
+        return render_template('admin_reset.html', error="❌ Contraseña incorrecta"), 403
+    
+    # Ejecutar reset de fábrica
+    success = recomendar.factory_reset()
+    
+    if success:
+        # Limpiar cookie del usuario actual
+        res = make_response(redirect("/"))
+        res.set_cookie('username', '', expires=0)
+        return res
+    else:
+        return render_template('admin_reset.html', error="❌ Error durante el reset. Verifica que exista el backup."), 500
+    
+@app.get('/perfil')
+def get_perfil():
+    username = request.cookies.get('username')
+    
+    if not username:
+        return redirect("/")
+    
+    # Obtener estadísticas
+    stats = estadisticas.obtener_estadisticas_usuario(username)
+    
+    # Verificar si tiene valoraciones
+    if stats['basicas']['total_valorados'] == 0:
+        return render_template('perfil.html', username=username, sin_datos=True)
+    
+    # Opcional: Comparación global
+    comparacion = estadisticas.obtener_comparacion_global(username)
+    
+    return render_template('perfil.html', 
+                          username=username, 
+                          stats=stats, 
+                          comparacion=comparacion)
 
 @app.get('/recomendaciones/<int:anime_id>')
 def get_recomendaciones_anime(anime_id):

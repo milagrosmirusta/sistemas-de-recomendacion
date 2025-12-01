@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="cupcake">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@latest/dist/full.css" rel="stylesheet" type="text/css" />
+  <title>Perfil de {{ username }}</title>
+
+  <style>
+    /* 🌸 Modo claro */
+    body {
+      background: linear-gradient(135deg, #f5e8ff, #f7e6ff, #fce7f3);
+      background-attachment: fixed;
+      color: #333;
+      transition: background 0.4s, color 0.4s;
+    }
+    .card {
+      background: rgba(255, 255, 255, 0.9);
+      border-color: #f3d1ff;
+      animation: fadeInUp 0.4s ease-in-out;
+    }
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* 🌙 Modo oscuro */
+    html[data-theme="dark"] body {
+      background: linear-gradient(135deg, #1a102e, #2a1745, #3b1a55);
+      color: #f3e8ff;
+    }
+    html[data-theme="dark"] .card {
+      background: rgba(30, 24, 54, 0.85);
+      border-color: #5b21b6;
+      color: #f3e8ff;
+    }
+    html[data-theme="dark"] h1, 
+    html[data-theme="dark"] h2, 
+    html[data-theme="dark"] h3, 
+    html[data-theme="dark"] p {
+      color: #f3e8ff;
+    }
+
+    /* Barra de progreso personalizada */
+    .score-bar {
+      height: 20px;
+      background: linear-gradient(to right, #ef4444, #f59e0b, #10b981);
+      border-radius: 10px;
+      transition: width 0.5s ease;
+    }
+  </style>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const savedTheme = localStorage.getItem("theme") || "cupcake";
+      document.documentElement.setAttribute("data-theme", savedTheme);
+      document.getElementById("theme-icon").textContent =
+        savedTheme === "cupcake" ? "🌙" : "☀️";
+    });
+
+    function toggleTheme() {
+      const currentTheme = document.documentElement.getAttribute("data-theme");
+      const newTheme = currentTheme === "cupcake" ? "dark" : "cupcake";
+      document.documentElement.setAttribute("data-theme", newTheme);
+      localStorage.setItem("theme", newTheme);
+      document.getElementById("theme-icon").textContent =
+        newTheme === "cupcake" ? "🌙" : "☀️";
+    }
+  </script>
+</head>
+<body class="min-h-screen text-gray-800 px-8 py-10 font-sans">
+  <div class="max-w-7xl mx-auto">
+
+    <!-- 🧭 Header -->
+    <header class="mb-8 bg-white/70 backdrop-blur-md border border-purple-100 shadow-sm rounded-2xl px-6 py-5">
+      <div class="flex justify-between items-center">
+        <div>
+          <h1 class="text-3xl font-bold text-fuchsia-700">
+            👤 Perfil de <span class="text-fuchsia-500">{{ username }}</span>
+          </h1>
+          <p class="text-sm text-gray-500 mt-1">Análisis completo de tus gustos de anime</p>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <button onclick="toggleTheme()" class="text-2xl hover:scale-110 transition-all p-2">
+            <span id="theme-icon">🌙</span>
+          </button>
+          <a href="/recomendaciones" class="btn btn-sm bg-gradient-to-r from-fuchsia-400 to-pink-400 text-white border-none">
+            Volver
+          </a>
+        </div>
+      </div>
+    </header>
+
+    {% if sin_datos %}
+    <!-- Mensaje si no hay datos -->
+    <div class="card border shadow-lg p-10 text-center">
+      <span class="text-6xl mb-4">📊</span>
+      <h2 class="text-2xl font-bold text-gray-700 mb-2">Aún no hay suficientes datos</h2>
+      <p class="text-gray-500 mb-6">Empieza a valorar animes para ver tus estadísticas aquí</p>
+      <a href="/recomendaciones" class="btn bg-gradient-to-r from-fuchsia-500 to-pink-500 text-white">
+        Ir a Recomendaciones
+      </a>
+    </div>
+    {% else %}
+
+    <!-- === ESTADÍSTICAS BÁSICAS === -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+      <div class="card border shadow-md p-6 text-center">
+        <span class="text-4xl mb-2">⭐</span>
+        <div class="text-3xl font-bold text-fuchsia-600">{{ stats.basicas.total_valorados }}</div>
+        <div class="text-sm text-gray-500 uppercase">Animes Valorados</div>
+      </div>
+
+      <div class="card border shadow-md p-6 text-center">
+        <span class="text-4xl mb-2">📊</span>
+        <div class="text-3xl font-bold text-purple-600">{{ "%.1f"|format(stats.basicas.promedio) }}</div>
+        <div class="text-sm text-gray-500 uppercase">Promedio</div>
+      </div>
+
+      <div class="card border shadow-md p-6 text-center">
+        <span class="text-4xl mb-2">🔥</span>
+        <div class="text-3xl font-bold text-green-600">{{ stats.basicas.max_score }}</div>
+        <div class="text-sm text-gray-500 uppercase">Score Máximo</div>
+      </div>
+
+      <div class="card border shadow-md p-6 text-center">
+        <span class="text-4xl mb-2">❄️</span>
+        <div class="text-3xl font-bold text-blue-600">{{ stats.basicas.min_score }}</div>
+        <div class="text-sm text-gray-500 uppercase">Score Mínimo</div>
+      </div>
+    </div>
+    <!-- === COMPARACIÓN GLOBAL === -->
+    {% if comparacion %}
+    <div class="card border shadow-md p-6 mb-8">
+    <h2 class="text-xl font-bold text-indigo-600 mb-4">🌍 Comparación Global</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="text-center p-4 bg-indigo-50 rounded-lg">
+        <div class="text-sm text-gray-500 mb-1">Tu Promedio</div>
+        <div class="text-3xl font-bold text-indigo-600">{{ "%.2f"|format(comparacion.user_avg) }}</div>
+        </div>
+        
+        <div class="text-center p-4 bg-gray-50 rounded-lg">
+        <div class="text-sm text-gray-500 mb-1">Promedio Global</div>
+        <div class="text-3xl font-bold text-gray-600">{{ "%.2f"|format(comparacion.global_avg) }}</div>
+        </div>
+        
+        <div class="text-center p-4 rounded-lg
+                    {% if comparacion.es_mas_critico %}bg-orange-50{% elif comparacion.es_mas_generoso %}bg-green-50{% else %}bg-blue-50{% endif %}">
+        <div class="text-sm text-gray-500 mb-1">Diferencia</div>
+        <div class="text-3xl font-bold 
+                    {% if comparacion.es_mas_critico %}text-orange-600{% elif comparacion.es_mas_generoso %}text-green-600{% else %}text-blue-600{% endif %}">
+            {{ "%+.2f"|format(comparacion.diferencia) }}
+        </div>
+        <div class="text-xs mt-2 font-semibold">
+            {% if comparacion.es_mas_critico %}
+            🔍 Más crítico que el promedio
+            {% elif comparacion.es_mas_generoso %}
+            😊 Más generoso que el promedio
+            {% else %}
+            👌 Similar al promedio
+            {% endif %}
+        </div>
+        </div>
+    </div>
+    </div>
+    {% endif %}
+    <!-- === DISTRIBUCIÓN DE SCORES === -->
+        <div class="card border shadow-md p-6 mb-8">
+        <h2 class="text-xl font-bold text-fuchsia-700 mb-4">📈 Distribución de Puntuaciones</h2>
+        <div class="space-y-3">
+            {% for item in stats.distribucion_scores %}
+            <div class="flex items-center gap-4">
+            <div class="text-sm font-semibold w-16">{{ item.score }}/10</div>
+            <div class="flex-1 bg-gray-200 rounded-full h-6 overflow-hidden">
+                <div class="score-bar h-full" 
+                    style="width: {{ (item.count / stats.basicas.total_valorados * 100)|int }}%; background: linear-gradient(to right, hsl({{ item.score * 12 }}, 70%, 50%), hsl({{ item.score * 12 }}, 90%, 60%));"></div>
+            </div>
+            <div class="text-sm font-semibold w-16 text-right">{{ item.count }}</div>
+            </div>
+            {% endfor %}
+        </div>
+        </div>
+
+    <!-- === TOP GÉNEROS Y PEORES === -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+      <!-- Top Géneros -->
+      <div class="card border shadow-md p-6">
+        <h2 class="text-xl font-bold text-green-600 mb-4">💜 Géneros Favoritos</h2>
+        <div class="space-y-3">
+          {% for genero, data in stats.top_generos %}
+          <div class="flex justify-between items-center p-3 bg-green-50 rounded-lg border border-green-200">
+            <div>
+              <div class="font-semibold text-gray-800">{{ genero }}</div>
+              <div class="text-xs text-gray-500">{{ data.count }} animes</div>
+            </div>
+            <div class="text-lg font-bold text-green-600">{{ "%.1f"|format(data.avg) }}</div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Peores Géneros -->
+      <div class="card border shadow-md p-6">
+        <h2 class="text-xl font-bold text-red-600 mb-4">💔 Géneros Menos Gustados</h2>
+        {% if stats.peores_generos %}
+        <div class="space-y-3">
+          {% for genero, data in stats.peores_generos %}
+          <div class="flex justify-between items-center p-3 bg-red-50 rounded-lg border border-red-200">
+            <div>
+              <div class="font-semibold text-gray-800">{{ genero }}</div>
+              <div class="text-xs text-gray-500">{{ data.count }} animes</div>
+            </div>
+            <div class="text-lg font-bold text-red-600">{{ "%.1f"|format(data.avg) }}</div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-gray-500 text-sm">Valora más animes para ver esta estadística</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- === TOP STUDIOS === -->
+    {% if stats.top_studios %}
+    <div class="card border shadow-md p-6 mb-8">
+      <h2 class="text-xl font-bold text-purple-600 mb-4">🎬 Estudios Favoritos</h2>
+      <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+        {% for studio, data in stats.top_studios %}
+        <div class="text-center p-4 bg-purple-50 rounded-lg border border-purple-200">
+          <div class="text-2xl font-bold text-purple-600">{{ "%.1f"|format(data.avg) }}</div>
+          <div class="text-sm font-semibold text-gray-800 mt-1">{{ studio }}</div>
+          <div class="text-xs text-gray-500">{{ data.count }} animes</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- === TOP AÑOS === -->
+    {% if stats.top_years %}
+    <div class="card border shadow-md p-6 mb-8">
+      <h2 class="text-xl font-bold text-blue-600 mb-4">📅 Años Favoritos</h2>
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+        {% for year_data in stats.top_years %}
+        <div class="text-center p-4 bg-blue-50 rounded-lg border border-blue-200">
+          <div class="text-xl font-bold text-blue-600">{{ year_data.year|int }}</div>
+          <div class="text-sm text-gray-600">Avg: {{ "%.1f"|format(year_data.avg_score) }}</div>
+          <div class="text-xs text-gray-500">{{ year_data.count }} animes</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- === TOP 10 MEJORES === -->
+    <div class="card border shadow-md p-6 mb-8">
+      <h2 class="text-xl font-bold text-fuchsia-700 mb-6">🏆 Top 10 Mejor Valorados</h2>
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+        {% for anime in stats.top_10_mejores %}
+        <div class="group relative">
+          <a href="/recomendaciones/{{ anime.anime_id }}" class="block">
+            <img src="{{ anime.img_src }}" alt="{{ anime.title }}" 
+                 class="w-full h-64 object-cover rounded-lg shadow-md group-hover:shadow-xl transition-all" />
+            <div class="absolute top-2 right-2 bg-green-500 text-white font-bold px-2 py-1 rounded-full text-sm">
+              {{ anime.score }}
+            </div>
+            <div class="mt-2 text-sm font-semibold text-center text-gray-800 group-hover:text-fuchsia-600 transition">
+              {{ anime.title|truncate(30) }}
+            </div>
+          </a>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- === TOP 10 PEORES === -->
+    <div class="card border shadow-md p-6">
+      <h2 class="text-xl font-bold text-gray-700 mb-6">😬 Top 10 Peor Valorados</h2>
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+        {% for anime in stats.top_10_peores %}
+        <div class="group relative opacity-75 hover:opacity-100 transition">
+          <a href="/recomendaciones/{{ anime.anime_id }}" class="block">
+            <img src="{{ anime.img_src }}" alt="{{ anime.title }}" 
+                 class="w-full h-64 object-cover rounded-lg shadow-md grayscale group-hover:grayscale-0 transition-all" />
+            <div class="absolute top-2 right-2 bg-red-500 text-white font-bold px-2 py-1 rounded-full text-sm">
+              {{ anime.score }}
+            </div>
+            <div class="mt-2 text-sm font-semibold text-center text-gray-600 group-hover:text-gray-800 transition">
+              {{ anime.title|truncate(30) }}
+            </div>
+          </a>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    {% endif %}
+  </div>
+</body>
+</html>
