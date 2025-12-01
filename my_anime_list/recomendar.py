@@ -574,8 +574,7 @@ def recomendador_hibrido_con_tt(username, animes_relevantes, animes_desconocidos
         """        
         - Cold start (<10):       Top-N 
         - Nuevos (10-30):         80% Item + 20% Content 
-        - Medios (30-150):        100% Item
-        - Power users (150-200):  50% TT + 50% Item 
+        - Medios (30-200):        100% Item
         - Súper users (200+):     100% TT 
         """
         num_ratings = len(animes_relevantes)
@@ -594,23 +593,11 @@ def recomendador_hibrido_con_tt(username, animes_relevantes, animes_desconocidos
             
             return mezclar_recomendaciones(item_recs, content_recs, N)
         
-        elif num_ratings < 150:
-            print(f"[Híbrido→Item100%]", end=" | ")
-            return recomendador_item_based(username, animes_relevantes, animes_desconocidos, N)
-        
         elif num_ratings < 200:
-            print(f"[Híbrido→TT50%+Item50%]", end=" | ")
-            try:
-                n_tt = int(N * 0.5)
-                n_item = N - n_tt
-                
-                tt_recs = recomendador_two_tower(username, animes_relevantes, animes_desconocidos, n_tt * 2)
-                item_recs = recomendador_item_based(username, animes_relevantes, animes_desconocidos, n_item * 2)
-                
-                return mezclar_recomendaciones(tt_recs, item_recs, N)
-            except:
-                print(f"[TT-FAIL→Item]", end=" | ")
-                return recomendador_item_based(username, animes_relevantes, animes_desconocidos, N)
+            print(f"[Híbrido→Item100%]", end=" | ")
+            n_item = int(N)
+            return recomendador_item_based(username, animes_relevantes, animes_desconocidos, n_item)
+
         
         else:  # 200+
             print(f"[Híbrido→TT100%]", end=" | ")
@@ -772,11 +759,9 @@ def recomendar(username, animes_relevantes=None, animes_desconocidos=None, N=9):
             sistema_nombre = "Popular (Top-N)"
         elif num_ratings < 30:
             sistema_nombre = "Híbrido (80% Colaborativo + 20% Contenido)"
-        elif num_ratings < 100:
+        elif num_ratings < 200:
             sistema_nombre = "100% Colaborativo"
-        elif num_ratings < 200:    
-            sistema_nombre = "Híbrido (50% Two-Tower + 50% Colaborativo)"
-        else:
+        elif num_ratings >= 200:    
             sistema_nombre = "100% Two-Tower"
     
     
